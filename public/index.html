@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CareFlow | Dash</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div class="dash-main">
+      <div class="topbar">
+
+        <div class="cf-logo">CareFlow</div>
+
+        <div class="right-side">
+          <span class="material-symbols-outlined">
+            notifications
+          </span>
+
+          <div class="profile-topbar-icon">
+            <img src="https://i.pravatar.cc/50?img=2" alt="profile picture">
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar">
+
+        <span class="material-symbols-outlined">
+          menu
+        </span>
+        <div class="feature-list">
+          <ul>
+            <li class="active-feature"><span class="material-symbols-outlined ">
+              dashboard
+            </span><a href="#dashboard" >Dash</a></li>
+            <li><span class="material-symbols-outlined">
+              chat
+            </span><a href="#diagnosis">Diagnosis</a></li>
+            <li><span class="material-symbols-outlined">
+              analytics
+            </span><a href="#analytics">Analytics</a></li>
+          </ul>
+        </div>
+        <div class="configuration-list">
+          <ul>
+            <li>
+              <span class="material-symbols-outlined">
+                settings
+              </span>Settings</li>
+            <li><span class="material-symbols-outlined">
+              help
+            </span>FAQ</li>
+            <li><span class="material-symbols-outlined">
+              logout
+            </span>Logout</li>
+          </ul>
+        </div>
+      </div>
+
+
+      <div class="big-queue">
+        <div class="patient-queue">
+          <h1>Patient Queue</h1>
+          <div class="boxes-container">
+            <div class="box red">Patients Queueing
+              <div class="number">100</div></div>
+            <div class="box blue">Patients Served<div class="number">100</div></div>
+            <div class="box green">Waiting<div class="number">100</div></div>
+          </div>
+        </div>
+        <div class="current-code">
+          <h1>Current Code</h1>
+          <div id="current-queue">CODE</div>
+
+          <div class="queue-actions">
+            <div class="next-or-no">
+              <button class="next-button"><span class="material-symbols-outlined">
+                check_circle
+              </span>Call Next</button>
+              <button class="no-show"><span class="material-symbols-outlined">
+                close
+              </span>No Show</button>
+            </div>
+            <a class="no-show-list">View No Show List</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="queue-sidebar">
+        <div class="status">
+          <div class="status-open"><span class="material-symbols-outlined">
+            check_circle
+          </span>Open</div>
+          <div class="status-pause"><span class="material-symbols-outlined">
+            schedule
+          </span>Pause</div>
+          <div class="status-closed"><span class="material-symbols-outlined">
+            cancel
+          </span>Closed</div>
+        </div>
+
+        <h1>Next Queue</h1> 
+        <div class="queue-display">
+          <ul>
+            <li>Codes</li>
+          </ul>
+        </div>
+      </div>
+
+
+      <script src="js/script.js">
+
+      </script>
+    </div>
+  </body>
+</html>

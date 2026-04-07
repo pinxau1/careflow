@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CareFlow | Login</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div class="login-main">
+
+      <form id="login-card" method="POST">
+        <h1>Login</h1> 
+
+        <label for="email">E-Mail</label>
+          <div class="input-container">
+            <span class="material-symbols-outlined">
+              alternate_email
+            </span>
+            <input name="email" type="email" id="email" placeholder="Enter your email" required>
+          </div>
+
+          <label for="password">Password</label>
+          <div class="input-container">
+            <span class="material-symbols-outlined">
+              lock
+            </span>
+            <input name="password" type="password" id="password" placeholder="Enter your password" required>
+          </div>
+          <div class="bottom-login">
+            <div>
+              <input type="checkbox" id="remember" name="remember">
+              <label for="remember">Remember Me</label>
+            </div>
+            <div>
+              <a href="forgot.html">Forgot password?</a>
+            </div>
+          </div>
+
+          <button type="submit" class="login-button">Login</button>
+
+          <div class="signup-bottom">
+            <div>Don't have an account?</div>
+            <a href="signup.html">Sign up</a>
+          </div>
+      </form>
+
+    </div>
+
+    <script src="js/script.js"></script>
+  </body>
+</html>
