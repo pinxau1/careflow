@@ -1,59 +1,196 @@
-let currentCodeDisplay = document.getElementById('current-queue');
-let buttonNext = document.querySelector('.next-button');
-let buttonNoShow = document.querySelector('.no-show');
-let codeUserDisplay = document.querySelector('.show-queue-code');
-let category = {
-  A: 0,
-  B: 0,
-  C: 0
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+$$(".feature-list li").forEach(item => {
+  item.addEventListener("click", () => {
+    $$(".feature-list li").forEach(i => i.classList.remove("active-feature"));
+    item.classList.add("active-feature");
+
+    const page = item.dataset.page;
+
+    $$(".page").forEach(p => p.classList.add("hidden"));
+    $("#page-" + page).classList.remove("hidden");
+
+    $("#page-title").textContent =
+      page === "dashboard" ? "Queue Dashboard" : "Settings";
+  });
+});
+
+const backdrop = $("#modal-backdrop");
+
+function openModal(id) {
+  backdrop.classList.remove("hidden");
+  $("#" + id).classList.remove("hidden");
+}
+
+function closeModal(id) {
+  backdrop.classList.add("hidden");
+  $("#" + id).classList.add("hidden");
+}
+
+$("#btn-add-patient-open").onclick = () => openModal("modal-add-patient");
+$("#btn-quick-add-open").onclick = () => openModal("modal-quick-add");
+$("#btn-emergency-open").onclick = () => openModal("modal-emergency");
+
+$$(".modal-close, [data-modal]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const id = btn.dataset.modal;
+    closeModal(id);
+  });
+});
+
+backdrop.onclick = () => {
+  $$(".modal").forEach(m => m.classList.add("hidden"));
+  backdrop.classList.add("hidden");
 };
-let code = 1;
 
-let codeCurrent;
+let selectedCategory = null;
 
-let categoryParent = document.querySelector('.category-identifier');
+$$(".cat-btn").forEach(btn => {
+  btn.onclick = () => {
+    $$(".cat-btn").forEach(b => b.classList.remove("active-cat"));
+    btn.classList.add("active-cat");
 
-if (categoryParent) {
+    selectedCategory = btn.dataset.prefix;
 
-  let categoryIdentifier = categoryParent.querySelectorAll("button");
+    $("#preview-code").textContent = selectedCategory + "001";
+    $("#preview-sub").textContent = "Next available code";
+  };
+});
 
-  categoryIdentifier.forEach((elem) => {
-    elem.addEventListener("click", async (e) => {
+$$(".visit-btn").forEach(btn => {
+  btn.onclick = () => {
+    $$(".visit-btn").forEach(b => b.classList.remove("active-visit"));
+    btn.classList.add("active-visit");
+  };
+});
+
+$$(".mode-btn").forEach(btn => {
+  btn.onclick = () => {
+    $$(".mode-btn").forEach(b => b.classList.remove("active-mode"));
+    btn.classList.add("active-mode");
+  };
+});
 
 
-      let categCheck = (e.target).id[0];
 
 
-      console.log(categCheck, category[categCheck]);
-      category[categCheck]++;
-      const res = await fetch('/api/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: categCheck, queueNumber: category[categCheck] })
-      });
-      const data = await res.json();
-      if (data.success) {
-        window.location.href = '';
-      }
-      else {
-        alert(data.error);
-      }
+$("#filter-btn").onclick = () => {
+  $("#filter-menu").classList.toggle("hidden");
+};
 
-      // console.log(codeCurrent);
-      // console.log(queue);
-      return;
-    })
+$$(".filter-option").forEach(opt => {
+  opt.onclick = () => {
+    $$(".filter-option").forEach(o => o.classList.remove("active"));
+    opt.classList.add("active");
+
+    $("#filter-btn").innerHTML = `
+      <span class="material-symbols-outlined">filter_list</span>
+      Filter: ${opt.textContent}
+      <span class="material-symbols-outlined">arrow_drop_down</span>
+    `;
+
+    $("#filter-menu").classList.add("hidden");
+  };
+});
+
+
+
+
+$("#queue-search").addEventListener("input", (e) => {
+  const val = e.target.value.toLowerCase();
+
+  $$("#queue-table tbody tr").forEach(row => {
+    const text = row.innerText.toLowerCase();
+    row.style.display = text.includes(val) ? "" : "none";
   });
+});
+
+
+
+
+const status = $("#queue-status");
+
+status.querySelectorAll("div").forEach(btn => {
+  btn.onclick = () => {
+    status.dataset.status = btn.dataset.value;
+  };
+});
+
+
+
+
+$("#btn-call-next").onclick = () => {
+  const code = $("#current-queue").textContent;
+  const name = $("#serving-name").textContent;
+
+  showToast("toast-calling", `${code} — ${name}`);
+};
+
+
+
+
+function showToast(id, msg) {
+  const toast = $("#" + id);
+  if (msg) {
+    const el = toast.querySelector(".toast-msg");
+    if (el) el.textContent = msg;
+  }
+
+  toast.classList.remove("hidden");
+
+  setTimeout(() => {
+    toast.classList.add("hidden");
+  }, 3000);
 }
 
-if (buttonNext && buttonNext) {
-  buttonNoShow.addEventListener("click", () => {
-    currentCodeDisplay.textContent = queue[queue.length - 1];
-  });
 
-  buttonNext.addEventListener("click", () => {
-    currentCodeDisplay.textContent = queue[queue.length - 1];
-    console.log(queue);
-  });
-}
 
+
+let voidTarget = null;
+
+$$("[data-action='void']").forEach(btn => {
+  btn.onclick = () => {
+    voidTarget = btn.closest("tr");
+
+    $("#void-patient-label").textContent = btn.dataset.name;
+    openModal("modal-void");
+  };
+});
+
+$("#btn-confirm-void").onclick = () => {
+  if (voidTarget) {
+    voidTarget.remove();
+    voidTarget = null;
+  }
+  closeModal("modal-void");
+};
+
+
+
+
+$$(".banner-close").forEach(btn => {
+  btn.onclick = () => {
+    $("#" + btn.dataset.target).classList.add("hidden");
+  };
+});
+
+
+
+
+$$(".counter-tab").forEach(tab => {
+  tab.onclick = () => {
+    $$(".counter-tab").forEach(t => t.classList.remove("active-tab"));
+    tab.classList.add("active-tab");
+
+    const counter = tab.dataset.counter;
+
+    $$(".counter-card").forEach(card => {
+      if (counter === "all" || card.dataset.counter === counter) {
+        card.style.display = "";
+      } else {
+        card.style.display = "none";
+      }
+    });
+  };
+});

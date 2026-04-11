@@ -1,20 +1,119 @@
-CREATE DATABASE IF NOT EXISTS hospitaldb;
-USE hospitaldb;
+CREATE DATABASE IF NOT EXISTS careflow;
+USE careflow;
 
-CREATE TABLE IF NOT EXISTS users(
-  userID INT AUTO_INCREMENT PRIMARY KEY,
-  email VARCHAR(100) NOT NULL UNIQUE,
-  password_hash VARCHAR(225) NOT NULL,
-  create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
-CREATE TABLE IF NOT EXISTS queues(
-  queueCode INT NOT NULL,
-  queueID INT AUTO_INCREMENT PRIMARY KEY,
-  department VARCHAR(20) NOT NULL,
-  userID INT NOT NULL,
-  joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  status ENUM ('pending', 'done', 'cancelled') DEFAULT 'pending',
-  FOREIGN KEY (userID) REFERENCES users(userID),
-  UNIQUE (userID, department)
-);
+
+
+CREATE TABLE users (
+  user_id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(255) NOT NULL UNIQUE,
+  contact_number VARCHAR(50) UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('admin', 'patient') NOT NULL DEFAULT 'patient',
+  full_name VARCHAR(150),
+  age INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+
+
+
+CREATE TABLE counters (
+  counter_id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  status ENUM('open','break','closed') NOT NULL DEFAULT 'open',
+  break_until TIME NULL,
+  current_queue_id INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+
+
+
+CREATE TABLE queues (
+  queue_id INT AUTO_INCREMENT PRIMARY KEY,
+
+  user_id INT NOT NULL,
+  counter_id INT NOT NULL,
+
+  code VARCHAR(10) NOT NULL,
+
+  category ENUM(
+    'senior','pwd','pregnant','child','solo','regular'
+  ) NOT NULL,
+
+  visit_type ENUM(
+    'new','followup','labreturn','rxonly'
+  ) NOT NULL,
+
+  visit_mode ENUM('walkin','scheduled') DEFAULT 'walkin',
+
+  status ENUM('waiting','serving','done','no_show','void')
+    DEFAULT 'waiting',
+
+  is_priority BOOLEAN DEFAULT FALSE,
+  is_emergency BOOLEAN DEFAULT FALSE,
+
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  called_at DATETIME NULL,
+  finished_at DATETIME NULL,
+
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+  FOREIGN KEY (counter_id) REFERENCES counters(counter_id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+
+
+
+CREATE TABLE queue_logs (
+  log_id INT AUTO_INCREMENT PRIMARY KEY,
+
+  queue_id INT NOT NULL,
+  actor_user_id INT NULL,
+
+  action ENUM('created','called','skipped','no_show','void','recall') NOT NULL,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (queue_id) REFERENCES queues(queue_id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_user_id) REFERENCES users(user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+
+
+
+CREATE TABLE daily_counters (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+
+  date DATE NOT NULL,
+  category VARCHAR(20) NOT NULL,
+  last_number INT DEFAULT 0,
+
+  UNIQUE KEY unique_date_category (date, category)
+) ENGINE=InnoDB;
+
+
+
+
+CREATE TABLE system_settings (
+  id INT PRIMARY KEY DEFAULT 1,
+
+  queue_status ENUM('open','pause','closed') DEFAULT 'open',
+
+  max_slots INT DEFAULT 50,
+  current_slots INT DEFAULT 0,
+
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+
+
+
+CREATE INDEX idx_queue_status ON queues(status);
+CREATE INDEX idx_queue_counter ON queues(counter_id);
+CREATE INDEX idx_queue_user ON queues(user_id);
+CREATE INDEX idx_queue_created ON queues(created_at);
+
+CREATE INDEX idx_logs_queue ON queue_logs(queue_id);
+CREATE INDEX idx_logs_actor ON queue_logs(actor_user_id);

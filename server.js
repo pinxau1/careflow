@@ -17,6 +17,13 @@ const pool = mariadb.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
 });
+//
+// function reqLogin(req, res, next){
+//   if(!req.session.uid){
+//     return res.redirect('/login');
+//   }
+//   next():
+// }
 
 app.use(session({
   secret: 'gumandoy',
@@ -38,23 +45,26 @@ app.post('/api/queue', async (req, res) => {
 
   const uid = req.session.uid;
   if (!uid) return res.status(401).json({ error: 'Not logged in' });
-  const { category, queueNumber } = req.body;
+  const { categCheck } = req.body;
   let categoryComplete = {
     A: 'Aisthecategory',
     B: 'Bisthecategory',
     C: 'Cisthecategory'
   };
-  let departmentName = categoryComplete[category];
+  let departmentName = categoryComplete[categCheck];
 
   let conn;
 
   try {
     conn = await pool.getConnection();
-    await conn.execute(
-      'INSERT INTO queues (queueCode, department, userID) VALUES (?, ?, ?)',
-      [queueNumber, departmentName, uid]
+    const dbres = await conn.execute(
+      'INSERT INTO queues (department, userID) VALUES (?, ?)',
+      [departmentName, uid]
     );
-    res.json({ success: true });
+    res.json({
+      success: true,
+      queueID: Number(dbres.insertId)
+    });
   }
   catch (err) {
     res.status(500).json({ error: err.message });
@@ -66,15 +76,15 @@ app.post('/api/queue', async (req, res) => {
 
 app.post('/api/signup', async (req, res) => {
   console.log(req.body);
-  const { email, password } = req.body;
-  const hashed = await bcrypt.hash(password, 10);
+  const { fullName, contact, username, finalPassword } = req.body;
+  const hashed = await bcrypt.hash(finalPassword, 10);
 
   let conn;
   try {
     conn = await pool.getConnection();
     await conn.execute(
-      'INSERT INTO users (email, password_hash) VALUES (?, ?)',
-      [email, hashed]
+      'INSERT INTO users (username, contact_number, password_hash, full_name) VALUES (?, ?, ?, ?)',
+      [username, contact, hashed, fullName]
     );
     res.json({ "success": true });
   }
@@ -88,15 +98,15 @@ app.post('/api/signup', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
 
-  let { email, password } = req.body;
+  let { username, password } = req.body;
 
   let conn;
 
   try {
     conn = await pool.getConnection();
     const [user] = await conn.execute(
-      'SELECT userID, password_hash FROM users WHERE email = ?',
-      [email]
+      'SELECT user_id, username, password_hash FROM users WHERE username = ?',
+      [username]
     )
     console.log(user);
 
@@ -109,7 +119,7 @@ app.post('/api/login', async (req, res) => {
     if (await bcrypt.compare(password, user.password_hash)) {
 
       console.log('The data is intercepted');
-      req.session.uid = user.userID;
+      req.session.uid = user.user_id;
       res.json({ "success": true });
     } else {
       res.json(({ "failed": false }));

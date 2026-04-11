@@ -1,26 +1,118 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="css/style.css">
-    <title>CareFlow | Queue</title>
-</head>
-<body>
-    <div class="user-main">
-      
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QueueFlow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styleRoj.css" />
+  </head>
+  <body>
+    <header>
+      <div class="logo">CareFlow</div>
+    </header>
 
-      <div class="category-identifier">
-        <button id="Acateg">Generate for Acateg</button>
-        <button id="Bcateg">Generate for Bcateg</button>
-        <button id="Ccateg">Generate for Ccateg</button>
+    <main>
+      <aside>
+        <div class="serving-panel">
+          <div class="serving-label">Complete the form to join</div>
+          <div class="ticket-number empty" id="now-ticket">---</div>
+          <div class="serving-name" id="now-name" style="opacity: 0.3">
+            Not yet joined
+          </div>
+          <div class="serving-service" id="now-service"></div>
+
+          <div class="serving-divider"></div>
+
+          <div class="wait-info">
+            <div class="wait-stat">
+              <div class="wait-stat-label">In Queue</div>
+              <div class="wait-stat-value" id="stat-in-queue">0</div>
+            </div>
+            <div class="wait-stat">
+              <div class="wait-stat-label">Est. Wait</div>
+              <div class="wait-stat-value" id="stat-est-wait">0m</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="right-panel">
+        <div class="add-card">
+          <div class="card-title">Add to queue</div>
+          <div class="form-row">
+            <div class="field">
+              <label>Name</label>
+              <input
+                type="text"
+                id="inp-name"
+                placeholder="e.g. Count Me In"
+                maxlength="40"
+                onkeydown="if (event.key === 'Enter') addToQueue();"
+              />
+            </div>
+            <div class="field">
+              <label>Service type</label>
+              <select id="inp-service">
+                <option value="general">General</option>
+                <option value="support">Support</option>
+                <option value="priority">Priority</option>
+                <option value="complaint">Complaint</option>
+              </select>
+            </div>
+
+            <div class="field field--full">
+              <label for="concern">Details</label>
+              <textarea
+                id="concern"
+                name="concern"
+                rows="3"
+                placeholder="Describe your concern or reason for visit..."
+              ></textarea>
+            </div>
+            <button class="btn-add" onclick="addToQueue()">+ Add</button>
+          </div>
+        </div>
+
+        <div class="queue-card">
+          <div class="queue-header">
+            <div class="card-title" style="margin: 0">Waiting queue</div>
+            <button class="clear-btn" onclick="clearAll()">Clear all</button>
+          </div>
+          <ul class="queue-list" id="queue-list">
+            <li class="empty-state" id="empty-state"></li>
+          </ul>
+        </div>
+
+        <div class="log-card">
+          <div class="queue-header">
+            <div class="clinic-status-left">
+              <div class="card-title" style="margin: 0">Clinic Status</div>
+              <div class="clinic-status-badge" id="clinic-status-badge">
+                <span
+                  class="log-dot"
+                  id="clinic-status-dot"
+                  style="background: var(--green)"
+                ></span>
+                <span id="clinic-status-text">Open</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="show-queue-code">CODE</div>
+    </main>
 
+    <footer>
+      CareFlow: trust the process. count me in. lock in.
+      <span id="session-date"></span>
+    </footer>
 
+    <div id="toast"></div>
 
-    </div>
-  
-    <script src="js/script.js"></script>
-</body>
+    <script src="script.js"></script>
+  </body>
 </html>

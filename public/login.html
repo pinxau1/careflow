@@ -1,56 +1,65 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CareFlow | Login</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
-  </head>
-  <body>
-    <div class="login-main">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CareFlow | Login</title>
+  <link rel="stylesheet" href="css/auth.css">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
 
-      <form id="login-card" action="/api/login" method="POST">
-        <h1>Login</h1> 
+<form class="auth-main" id="login-form">
+  <div class="auth-card" id="login-card">
 
-        <label for="email">E-Mail</label>
-          <div class="input-container">
-            <span class="material-symbols-outlined">
-              alternate_email
-            </span>
-            <input name="email" type="email" id="email" placeholder="Enter your email" required>
-          </div>
-
-          <label for="password">Password</label>
-          <div class="input-container">
-            <span class="material-symbols-outlined">
-              lock
-            </span>
-            <input name="password" type="password" id="password" placeholder="Enter your password" required>
-          </div>
-          <div class="bottom-login">
-            <div>
-              <input type="checkbox" id="remember" name="remember">
-              <label for="remember">Remember Me</label>
-            </div>
-            <div>
-              <a href="forgot.html">Forgot password?</a>
-            </div>
-          </div>
-
-          <button type="submit" class="login-button">Login</button>
-
-          <div class="signup-bottom">
-            <div>Don't have an account?</div>
-            <a href="signup.html">Sign up</a>
-          </div>
-      </form>
-
+    <div class="auth-logo">
+      <span class="material-symbols-outlined">ecg_heart</span>
+      <span>CareFlow</span>
     </div>
 
-    <script src="js/login.js"></script>
-  </body>
+    <h2>Welcome back</h2>
+    <p class="auth-sub">Super Family Health Centers, Cebu</p>
+
+    <div class="input-group">
+      <label for="login-username">Username</label>
+      <div class="input-container">
+        <span class="material-symbols-outlined">person</span>
+        <input type="text" id="login-username" name="username" placeholder="Enter your username" autocomplete="username" required>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label for="login-password">Password</label>
+      <div class="input-container">
+        <span class="material-symbols-outlined">lock</span>
+        <input type="password" id="login-password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
+      
+        <span class="material-symbols-outlined pw-toggle" id="toggle-login-pw">visibility</span>
+      </div>
+    </div>
+
+
+    <div class="auth-error hidden" id="login-error">
+      <span class="material-symbols-outlined">error</span>
+      Incorrect username or password.
+    </div>
+
+    <button type="submit" class="auth-button" id="btn-login">Sign In</button>
+
+    <div class="auth-switch">
+      New to Careflow?
+      <a href="signup.html" class="auth-link">Create an account</a>
+    </div>
+
+    <p class="auth-hint">
+      <span class="material-symbols-outlined">info</span>
+      Contact Family Care Clinic for concerns
+    </p>
+
+  </div>
+</form>
+
+<script src="js/auth.js"></script>
+</body>
 </html>

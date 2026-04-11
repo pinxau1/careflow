@@ -1,42 +1,177 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CareFlow | Login</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CareFlow | Create Account</title>
+    <link rel="stylesheet" href="css/auth.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
-    <div class="login-main">
+    <form class="auth-main" id="signup-form">
+      <div class="auth-card" id="signup-card">
+        <div class="auth-logo">
+          <span class="material-symbols-outlined">ecg_heart</span>
+          <span>CareFlow</span>
+        </div>
 
-      <form id="signup-card" action="/api/signup" method="POST">
-        <h1>Sign Up</h1> 
+        <h2>Create Account</h2>
+        <p class="auth-sub">Super Family Health Centers — Cebu</p>
 
-        <label for="email">E-Mail</label>
-          <div class="input-container">
-            <span class="material-symbols-outlined">
-              alternate_email
-            </span>
-            <input name="email" type="email" id="email" placeholder="Enter your email" required>
+
+
+        <div class="form-section" id="form-section">
+          <div class="form-section-label">Personal Information</div>
+
+          <div class="input-group">
+            <label for="signup-fullname">Full Name <span class="required">*</span></label>
+            <div class="input-container" id="ic-fullname">
+              <span class="material-symbols-outlined">badge</span>
+              <input
+                type="text"
+                id="signup-fullname"
+                name="fullName"
+                placeholder="Enter your full name"
+                required
+              />
+            </div>
           </div>
 
-          <label for="password">Password</label>
-          <div class="input-container">
-            <span class="material-symbols-outlined">
-              lock
-            </span>
-            <input name="password" type="password" id="password" placeholder="Enter your password" required>
+
+          <div class="input-group">
+            <label for="signup-contact">Contact Number <span class="required">*</span></label>
+            <div class="input-container" id="ic-contact">
+              <span class="material-symbols-outlined">phone</span>
+              <input
+                type="tel"
+                id="signup-contact"
+                placeholder="e.g. 09XX XXX XXXX"
+                name="contactNum"
+                maxlength="11"
+                required
+              />
+            </div>
+            <small class="field-hint"
+              >Used for system alerts and account recovery</small
+            >
           </div>
-          <button href="login.html" type="submit" class="login-button">Sign Up</button>
 
-      </form>
+          <div class="form-divider"></div>
 
-    </div>
+          <div class="form-section-label">Account Credentials</div>
 
-    <script src="js/signup.js"></script>
+          <div class="input-group">
+            <label for="signup-username">Username <span class="required">*</span></label>
+            <div class="input-container" id="ic-username">
+              <span class="material-symbols-outlined">person</span>
+
+              <input
+                type="text"
+                id="signup-username"
+                placeholder="Choose a username"
+                name="username"
+                autocomplete="username"
+                required
+              />
+            </div>
+
+            <div class="field-feedback hidden" id="username-taken">
+              <span class="material-symbols-outlined">error</span> Username is
+              already taken.
+            </div>
+            <div class="field-feedback feedback-ok hidden" id="username-ok">
+              <span class="material-symbols-outlined">check_circle</span>
+              Username is available.
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="signup-password">Password <span class="required">*</span></label>
+            <div class="input-container" id="ic-password">
+              <span class="material-symbols-outlined">lock</span>
+              <input
+                type="password"
+                id="signup-password"
+                placeholder="Create a password"
+                name="password"
+                autocomplete="new-password"
+                required
+              />
+              <span
+                class="material-symbols-outlined pw-toggle"
+                id="toggle-signup-pw"
+                >visibility</span
+              >
+            </div>
+
+            <div class="pw-strength-track hidden" id="pw-strength-track">
+              <div
+                class="pw-strength-bar"
+                id="pw-strength-bar"
+                style="width: 0%"
+                data-strength=""
+              ></div>
+            </div>
+            <div class="pw-strength-label hidden" id="pw-strength-label"></div>
+            <small class="field-hint"
+              >Minimum 8 characters. Use letters, numbers, and symbols.</small
+            >
+          </div>
+
+          <div class="input-group">
+            <label for="signup-confirm">Confirm Password <span class="required">*</span></label>
+            <div class="input-container" id="ic-confirm">
+              <span class="material-symbols-outlined">lock</span>
+              <input
+                type="password"
+                id="signup-confirm"
+                placeholder="Re-enter your password"
+                name="confirmPassword"
+                autocomplete="new-password"
+                required
+              />
+              <span
+                class="material-symbols-outlined pw-toggle"
+                id="toggle-confirm-pw"
+                >visibility</span
+              >
+            </div>
+
+            <div class="field-feedback hidden" id="pw-mismatch">
+              <span class="material-symbols-outlined">error</span> Passwords do
+              not match.
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-error hidden" id="signup-error">
+          <span class="material-symbols-outlined">error</span>
+          <span id="signup-error-msg">Please fix the errors above.</span>
+        </div>
+
+        <p class="terms-note">
+          By creating an account, you are assured that your personal and patient information is handled with strict confidentiality and protected under
+          <strong>RA 10173</strong> (Data Privacy Act of 2012). The system follows secure data handling practices to ensure that your information is used only for proper medical and administrative purposes.
+        </p>
+
+        <button type="submit" class="auth-button" id="btn-signup" >
+          Create Account
+        </button>
+
+        <div class="auth-switch">
+          Already have an account?
+          <a href="login.html" class="auth-link">Sign in</a>
+        </div>
+      </div>
+    </form>
+
+    <script src="js/auth.js"></script>
   </body>
 </html>
