@@ -8,6 +8,18 @@ const path = require('path');
 dotenv.config();
 const app = express();
 
+app.use(session({
+  name: 'careflow.sid',
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: false,
+    sameSite: 'lax'
+  }
+
+}));
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -28,18 +40,6 @@ function reqLogin(req, res, next) {
   next();
 }
 
-app.use(session({
-  name: 'careflow.sid',
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    secure: false,
-    sameSite: 'lax'
-  }
-
-}));
 
 app.get('/', reqLogin, (req, res) => {
   res.sendFile(path.join(__dirname, 'protected/index.html'));
@@ -128,6 +128,7 @@ app.post('/api/signup', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
 
+
   let { username, password } = req.body;
 
   let conn;
@@ -140,9 +141,9 @@ app.post('/api/login', async (req, res) => {
     )
     console.log(user);
 
-    if (user.length === 0) {
+    if (!user) {
       console.log('there is none');
-      return;
+      return res.status(401).json({ error: 'User not found' });
     }
 
 
@@ -163,6 +164,77 @@ app.post('/api/login', async (req, res) => {
     if (conn) conn.release();
   }
 
+});
+
+app.post('/api/queue/create', reqLogin, async (req, res) => {
+  const uid = req.session.uid;
+  const { patientName, serviceType, concern } = req.body;
+
+  if (!patientName || !serviceType) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
+
+  const conn = await pool.getConnection();
+
+  try {
+    // console.log('running add queue');
+    await conn.beginTransaction();
+
+    const [categ] = await conn.execute(
+      `SELECT code, department_id FROM departments WHERE name = ?`,
+      [serviceType]
+    );
+
+    console.log(categ);
+
+    await conn.execute(
+      `INSERT INTO daily_counters (date, department_id, last_number)
+            VALUES (CURDATE(), ?, 1)
+            ON DUPLICATE KEY UPDATE last_number = last_number + 1`,
+      [categ.department_id]
+    );
+
+
+    const [counter] = await conn.execute(
+      `SELECT last_number FROM daily_counters
+            WHERE date = CURDATE() and department_id = ?`,
+      [categ.department_id]
+    );
+
+    console.log(counter.last_number);
+
+    const next = Number(counter.last_number);
+
+    console.log('now printing:');
+    console.log(next);
+
+    const code = categ.code + String(next).padStart(3, '0');
+
+    console.log(code);
+
+    const insert = await conn.execute(
+      `INSERT INTO queues (full_name, category, visit_description, code, user_id, department_id)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+      [patientName, serviceType, concern, code, uid, categ.department_id]
+    );
+
+
+    await conn.commit();
+
+    res.json({
+      success: true,
+      queue_id: Number(insert.insertId),
+      code
+    });
+
+  } catch (err) {
+    await conn.rollback();
+    console.error(err);
+    console.error(err.stack);
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
 });
 
 

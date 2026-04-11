@@ -15,41 +15,48 @@ CREATE TABLE users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-
-
-
-CREATE TABLE counters (
-  counter_id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL,
-  status ENUM('open','break','closed') NOT NULL DEFAULT 'open',
-  break_until TIME NULL,
-  current_queue_id INT NULL,
+CREATE TABLE departments (
+  department_id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL UNIQUE,
+  code VARCHAR(10) NOT NULL UNIQUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE counters (
+  counter_id INT AUTO_INCREMENT PRIMARY KEY,
+  department_id INT NOT NULL,
 
+  name VARCHAR(50) NOT NULL,
+
+  status ENUM('open','break','closed') NOT NULL DEFAULT 'open',
+  break_until TIME NULL,
+
+  current_queue_id INT NULL,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (department_id) REFERENCES departments(department_id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;
 
 
 CREATE TABLE queues (
   queue_id INT AUTO_INCREMENT PRIMARY KEY,
 
+  full_name VARCHAR(150),
   user_id INT NOT NULL,
-  counter_id INT NOT NULL,
+  department_id INT NOT NULL,
 
   code VARCHAR(10) NOT NULL,
 
   category ENUM(
-    'senior','pwd','pregnant','child','solo','regular'
+    'general','support','priority','complaint'
   ) NOT NULL,
-
-  visit_type ENUM(
-    'new','followup','labreturn','rxonly'
-  ) NOT NULL,
-
-  visit_mode ENUM('walkin','scheduled') DEFAULT 'walkin',
 
   status ENUM('waiting','serving','done','no_show','void')
     DEFAULT 'waiting',
+
+  visit_description TEXT NULL,
 
   is_priority BOOLEAN DEFAULT FALSE,
   is_emergency BOOLEAN DEFAULT FALSE,
@@ -59,11 +66,8 @@ CREATE TABLE queues (
   finished_at DATETIME NULL,
 
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-  FOREIGN KEY (counter_id) REFERENCES counters(counter_id) ON DELETE RESTRICT
+  FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
-
-
-
 
 CREATE TABLE queue_logs (
   log_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -80,20 +84,18 @@ CREATE TABLE queue_logs (
 ) ENGINE=InnoDB;
 
 
-
-
 CREATE TABLE daily_counters (
   id INT AUTO_INCREMENT PRIMARY KEY,
 
   date DATE NOT NULL,
-  category VARCHAR(20) NOT NULL,
+  department_id INT NOT NULL,
   last_number INT DEFAULT 0,
 
-  UNIQUE KEY unique_date_category (date, category)
+  UNIQUE KEY unique_date_department (date, department_id),
+
+  FOREIGN KEY (department_id) REFERENCES departments(department_id)
+    ON DELETE CASCADE
 ) ENGINE=InnoDB;
-
-
-
 
 CREATE TABLE system_settings (
   id INT PRIMARY KEY DEFAULT 1,

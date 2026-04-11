@@ -1,4 +1,5 @@
 let index = document.getElementById('indexFlow');
+let patient = document.getElementById('patientFlow');
 
 if (index) {
 
@@ -215,4 +216,49 @@ if (index) {
       console.error('Logout failed', err);
     }
   })
+}
+
+if (patient) {
+  function showToast(msg) {
+    const toast = document.getElementById("toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toast.classList.remove("show"), 2400);
+  }
+
+  const addQueueForm = document.getElementById('add-queue-form');
+
+  addQueueForm.addEventListener('submit', async (e) => {
+
+    e.preventDefault();
+    const patientName = addQueueForm.name.value;
+    const serviceType = addQueueForm.serviceType.value;
+    const concern = addQueueForm.concern.value;
+
+    try {
+      const res = await fetch('api/queue/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientName, serviceType, concern })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error);
+        showToast(data.error || 'Failed');
+        return;
+      }
+
+      showToast(`Queued: ${data.code}`);
+    } catch (err) {
+      showToast('Server error');
+    }
+
+    showToast('Successfully submitted');
+
+
+
+  });
 }

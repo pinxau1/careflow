@@ -16,7 +16,7 @@
       <div class="logo">CareFlow</div>
     </header>
 
-    <main>
+    <main id="patientFlow">
       <aside>
         <div class="serving-panel">
           <div class="serving-label">Complete the form to join</div>
@@ -42,22 +42,23 @@
       </aside>
 
       <div class="right-panel">
-        <div class="add-card">
+        <form class="add-card" id="add-queue-form">
           <div class="card-title">Add to queue</div>
           <div class="form-row">
             <div class="field">
-              <label>Name</label>
+              <label for="inp-name">Name</label>
               <input
                 type="text"
                 id="inp-name"
-                placeholder="e.g. Count Me In"
+                placeholder="Enter patient's full name"
+                name="name"
                 maxlength="40"
                 onkeydown="if (event.key === 'Enter') addToQueue();"
               />
             </div>
             <div class="field">
-              <label>Service type</label>
-              <select id="inp-service">
+              <label for="inp-service">Service type</label>
+              <select id="inp-service" name="serviceType">
                 <option value="general">General</option>
                 <option value="support">Support</option>
                 <option value="priority">Priority</option>
@@ -74,9 +75,9 @@
                 placeholder="Describe your concern or reason for visit..."
               ></textarea>
             </div>
-            <button class="btn-add" onclick="addToQueue()">+ Add</button>
+            <button type="submit" class="btn-add" >+ Add</button>
           </div>
-        </div>
+        </form>
 
         <div class="queue-card">
           <div class="queue-header">
@@ -113,6 +114,6 @@
 
     <div id="toast"></div>
 
-    <script src="script.js"></script>
+    <script src="js/script.js"></script>
   </body>
 </html>
