@@ -14,6 +14,9 @@
   <body>
     <header>
       <div class="logo">CareFlow</div>
+      <div class="header-right">
+        <button class="btn-logout" id="btn-logout">Log out</button>
+      </div>
     </header>
 
     <main id="patientFlow">
@@ -36,6 +39,22 @@
             <div class="wait-stat">
               <div class="wait-stat-label">Est. Wait</div>
               <div class="wait-stat-value" id="stat-est-wait">0m</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="log-card">
+          <div class="queue-header">
+            <div class="clinic-status-left">
+              <div class="card-title" style="margin: 0">Clinic Status</div>
+              <div class="clinic-status-badge" id="clinic-status-badge">
+                <span
+                  class="log-dot"
+                  id="clinic-status-dot"
+                  style="background: var(--green)"
+                ></span>
+                <span id="clinic-status-text">Open</span>
+              </div>
             </div>
           </div>
         </div>
@@ -87,22 +106,6 @@
           <ul class="queue-list" id="queue-list">
             <li class="empty-state" id="empty-state"></li>
           </ul>
-        </div>
-
-        <div class="log-card">
-          <div class="queue-header">
-            <div class="clinic-status-left">
-              <div class="card-title" style="margin: 0">Clinic Status</div>
-              <div class="clinic-status-badge" id="clinic-status-badge">
-                <span
-                  class="log-dot"
-                  id="clinic-status-dot"
-                  style="background: var(--green)"
-                ></span>
-                <span id="clinic-status-text">Open</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </main>
