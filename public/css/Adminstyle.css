@@ -688,3 +688,7 @@ footer {
   border-radius: 16px;
   pointer-events: all;
 }
+
+.hidden{
+  display: none;
+}

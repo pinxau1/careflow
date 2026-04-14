@@ -21,7 +21,7 @@ app.use(session({
 
 }));
 app.use((req, res, next) => {
-  console.log(req.method, req.url); // log every incoming request
+  console.log(req.method, req.url);
   next();
 });
 app.use(express.json());
@@ -46,7 +46,7 @@ function reqLogin(req, res, next) {
 
 function reqAdmin(req, res, next) {
 
-  if (req.session.uid !== 'admin') {
+  if (req.session.role !== 'admin') {
     return res.redirect('/queue');
   }
   next();
@@ -147,7 +147,7 @@ app.post('/api/login', async (req, res) => {
 
       console.log('The data is intercepted');
       req.session.uid = user.user_id;
-      req.session.uid = user.role;
+      req.session.role = user.role;
       res.json({ "success": true });
     } else {
       res.json(({ "failed": false }));
@@ -200,6 +200,81 @@ app.get('/api/queue/status', reqLogin, async (req, res) => {
     return res.json({ error: err.message });
   } finally {
     if (conn) conn.release();
+  }
+});
+
+
+
+app.patch('/api/admin/skip/:queue_id', reqLogin, reqAdmin, async (req, res) => {
+  const { queue_id } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    await conn.execute(
+      `UPDATE queues SET status = 'skipped' WHERE queue_id = ?`,
+      [queue_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.delete('/api/admin/delete/:queue_id', reqLogin, reqAdmin, async (req, res) => {
+  const { queue_id } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    await conn.execute(
+      `DELETE FROM queues WHERE queue_id = ?`,
+      [queue_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.post('/api/admin/next', reqLogin, reqAdmin, async (req, res) => {
+  const { department_id } = req.body;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    await conn.execute(
+      `UPDATE queues SET status = 'skipped'
+       WHERE department_id = ? AND status = 'serving'`,
+      [department_id]
+    );
+
+    const [next] = await conn.execute(
+      `SELECT queue_id, code, full_name, category
+       FROM queues
+       WHERE department_id = ? AND status = 'waiting'
+       ORDER BY is_emergency DESC, is_priority DESC, created_at ASC
+       LIMIT 1`,
+      [department_id]
+    );
+
+    if (!next) {
+      await conn.commit();
+      return res.json({ success: true, next: null });
+    }
+
+    await conn.execute(
+      `UPDATE queues SET status = 'serving' WHERE queue_id = ?`,
+      [next.queue_id]
+    );
+
+    await conn.commit();
+    res.json({ success: true, next });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
   }
 });
 
@@ -292,29 +367,26 @@ app.get('/api/admin/status', reqLogin, async (req, res) => {
 
   let conn;
 
+
   try {
     conn = await pool.getConnection();
-
     const [rows] = await conn.execute(
-      `SELECT q.code,
-            (
-              SELECT COUNT(*) FROM queues 
-              WHERE created_at < q.created_at
-              AND status = 'waiting' 
-              AND department_id = q.department_id
-            ) AS ahead, department_id 
-            FROM queues q
-            WHERE q.user_id = ?
-            AND q.status IN ('waiting', 'serving')
-            ORDER BY created_at DESC
-            LIMIT 1`,
+      `SELECT queue_id, code, full_name, category, status, department_id
+   FROM queues
+   WHERE user_id = ? AND status IN ('waiting', 'serving')  -- remove user_id filter if admin sees all
+   ORDER BY created_at DESC LIMIT 1`,
       [uid]
     );
 
     if (rows) {
-      return res.json({ queued: true, ahead: Number(rows.ahead), code: rows.code, department_id: rows.department_id });
-    } else {
-      return res.json({ queued: false });
+      return res.json({
+        queued: true,
+        queue_id: rows.queue_id,
+        code: rows.code,
+        full_name: rows.full_name,
+        category: rows.category,
+        department_id: rows.department_id
+      });
     }
 
   } catch (err) {
@@ -332,8 +404,8 @@ app.get('/api/admin/:department_id', async (req, res) => {
   try {
     conn = await pool.getConnection();
 
-    const rows = await conn.execute( //unfinished
-      `SELECT code, department_id, full_name, 
+    const rows = await conn.execute(
+      `SELECT code, department_id, full_name
             FROM queues
             WHERE department_id = ?
             AND status = 'waiting'
@@ -380,11 +452,9 @@ app.get('/api/queue/:department_id', async (req, res) => {
   }
 });
 
-
-
 app.use(express.static('public'));
 
-app.get('/', reqLogin, (req, res) => {
+app.get('/', reqLogin, reqAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'protected/index.html'));
 });
 app.get('/login.html', (req, res) => {
