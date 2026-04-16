@@ -420,7 +420,119 @@ if (patient) {
     }
   });
 
+/* === START OF ADDED SCRIPT ===
+Details:
+  1) - Controls modals (open/close)
+  2) - Handles extend-time feature
+  3) - Tracks call attempts
+  4) - Shows notifications (toasts + bubble)
+  5) - Updates UI dynamically based on actions
+*/
 
+  const $ = id => document.getElementById(id);
+  const openModal  = id => { $(id).classList.remove('hidden'); $('modal-backdrop').classList.remove('hidden'); };
+  const closeModal = id => { $(id).classList.add('hidden'); $('modal-backdrop').classList.add('hidden'); };
+
+  function showToast(id, duration = 4000) {
+    const t = $(id);
+    t.classList.remove('hidden');
+    void t.offsetWidth;
+    t.classList.add('visible');
+    const bar = t.querySelector('.toast-bar');
+    if (bar) { bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = ''; }
+    setTimeout(() => { t.classList.remove('visible'); setTimeout(() => t.classList.add('hidden'), 300); }, duration);
+  }
+
+  document.querySelectorAll('.banner-close').forEach(btn => {
+    btn.addEventListener('click', () => $(btn.dataset.target).classList.add('hidden'));
+  });
+
+  document.querySelectorAll('[data-modal]').forEach(btn => {
+    btn.addEventListener('click', () => closeModal(btn.dataset.modal));
+  });
+
+  $('modal-backdrop').addEventListener('click', () => {
+    document.querySelectorAll('.modal:not(.hidden)').forEach(m => m.classList.add('hidden'));
+    $('modal-backdrop').classList.add('hidden');
+  });
+
+  const btnExtend      = $('btn-extend-hours');
+  const extendInput    = $('extend-time-input');
+  const btnExtConfirm  = $('btn-extend-confirm');
+  const btnExtCancel   = $('btn-extend-cancel');
+  const extendTimeEl   = $('extend-to-time');
+  let extendActive     = false;
+
+  btnExtend.addEventListener('click', () => {
+    if (extendActive) return;
+    extendActive = true;
+    btnExtend.classList.add('btn-active');
+    btnExtend.classList.remove('btn-outline-amber');
+    btnExtend.classList.add('btn-amber');
+    extendInput.classList.remove('hidden');
+    const d = new Date(); d.setHours(d.getHours() + 1, 0);
+    extendTimeEl.value = `${String(d.getHours()).padStart(2,'0')}:00`;
+    extendTimeEl.focus();
+  });
+
+  btnExtConfirm.addEventListener('click', () => {
+    const t = extendTimeEl.value;
+    if (!t) return;
+    const [h, m] = t.split(':').map(Number);
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    const h12 = ((h % 12) || 12);
+    const label = `${h12}:${String(m).padStart(2,'0')} ${suffix}`;
+    const strong = $('banner-cutoff').querySelector('strong:last-of-type');
+    if (strong) strong.textContent = label;
+    extendInput.classList.add('hidden');
+    btnExtend.textContent = `✓ Extended to ${label}`;
+  });
+
+  btnExtCancel.addEventListener('click', () => {
+    extendActive = false;
+    btnExtend.classList.remove('btn-active','btn-amber');
+    btnExtend.classList.add('btn-outline-amber');
+    btnExtend.innerHTML = '<span class="material-symbols-outlined">schedule</span> Extend Hours';
+    extendInput.classList.add('hidden');
+  });
+
+  const callCounts   = {};
+  const callBubble   = $('call-bubble');
+  let callBubbleTimer = null;
+
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="call"]');
+    if (!btn) return;
+    const code = btn.dataset.code;
+    callCounts[code] = (callCounts[code] || 0) + 1;
+    if (callCounts[code] >= 3) {
+      callBubble.classList.remove('hidden');
+      clearTimeout(callBubbleTimer);
+      callBubbleTimer = setTimeout(() => callBubble.classList.add('hidden'), 5000);
+    }
+    showToast('toast-calling', 3000);
+  });
+
+  $('btn-call-next').addEventListener('click', () => {
+    showToast('toast-calling', 3000);
+  });
+
+  let skippedQueue = [
+    { code:'R004', name:'Maria Santos',  priority:'low', reason:'Stepped out',    time:'09:02 AM' },
+    { code:'R003', name:'Jun Dela Cruz', priority:'low', reason:'Not responding', time:'08:44 AM' },
+    { code:'R002', name:'Boret Pansoy',  priority:'low', reason:'No reason',      time:'08:00 AM' },
+  ];
+
+  function updateRecallUI() {
+    const target = skippedQueue[Math.min(2, skippedQueue.length - 1)];
+    const badge  = $('recall-badge');
+    badge.textContent = skippedQueue.length;
+    badge.style.display = skippedQueue.length ? '' : 'none';
+  }
+
+  updateRecallUI();
+
+// === END OF ADDED SCRIPT === //
 
 
 }
