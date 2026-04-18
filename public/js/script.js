@@ -1,5 +1,6 @@
 let index = document.getElementById('indexFlow');
 let patient = document.getElementById('patientFlow');
+let mockAdmin = document.getElementById('mockFlow');
 
 if (index) {
 
@@ -200,7 +201,24 @@ if (index) {
     };
   });
 
+}
+
+if (mockAdmin) {
+
   let logout = document.getElementById('btn-logout');
+
+
+  window.addEventListener('DOMContentLoaded', async () => {
+    console.log('i am calling status');
+    const res = await fetch('/api/admin/status');
+    const data = await res.json();
+
+    if (data.queued) {
+      departmentId = data.department_id;
+      show(data.code, data.ahead);
+      startPolling();
+    }
+  });
 
   logout.addEventListener("click", async (e) => {
     e.preventDefault();
@@ -215,7 +233,53 @@ if (index) {
     } catch (err) {
       console.error('Logout failed', err);
     }
-  })
+  });
+
+  function renderQueueList(data) {
+    const list = document.getElementById('queue-list');
+    list.innerHTML = '';
+
+    if (data.length == 0) {
+      list.innerHTML = '<li class="empty-state">No patients waiting</li>';
+      return;
+    }
+
+    console.log(data);
+
+    data.forEach(q => {
+      const li = document.createElement('li');
+      li.textContent = `${q.code} - ${q.full_name}`;
+      li.classList.add('queue-item');
+      list.appendChild(li);
+    });
+  }
+
+  async function loadQueue(departmentId) {
+    if (!departmentId) return;
+    const res = await fetch(`/api/admin/${departmentId}`);
+    const data = await res.json();
+
+    if (!res.ok) return;
+
+    renderQueueList(data);
+  }
+
+  let poller = null;
+  function startPolling() {
+
+    if (!departmentId) return;
+
+    loadQueue(departmentId);
+
+    if (poller) clearInterval(poller);
+
+    poller = setInterval(() => {
+      loadQueue(departmentId);
+    }, 30000);
+
+  }
+
+
 }
 
 if (patient) {
@@ -339,6 +403,22 @@ if (patient) {
 
   }
 
+  let logout = document.getElementById('btn-logout');
+
+  logout.addEventListener("click", async (e) => {
+    e.preventDefault();
+
+    try {
+      await fetch('/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+
+      window.location.href = '/login.html';
+    } catch (err) {
+      console.error('Logout failed', err);
+    }
+  });
 
 
 

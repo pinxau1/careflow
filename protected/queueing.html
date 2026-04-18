@@ -9,20 +9,20 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/styleRoj.css" />
+    <link rel="stylesheet" href="css/Adminstyle.css" />
   </head>
   <body>
     <header>
-      <div class="logo">CareFlow | Queue</div> 
+      <div class="logo">CareFlow</div>
       <div class="header-right">
         <button class="btn-logout" id="btn-logout">Log out</button>
       </div>
     </header>
 
-    <main id="patientFlow">
+    <main>
       <aside>
         <div class="serving-panel">
-          <div class="serving-label" id="completeFormLabel">Complete the form to join</div>
+          <div class="serving-label">Complete the form to join</div>
           <div class="ticket-number empty" id="now-ticket">---</div>
           <div class="serving-name" id="now-name" style="opacity: 0.3">
             Not yet joined
@@ -30,6 +30,18 @@
           <div class="serving-service" id="now-service"></div>
 
           <div class="serving-divider"></div>
+
+          <button class="btn-next" id="btn-next" onclick="callNext()" disabled>
+            Call Next
+          </button>
+          <button
+            class="btn-served"
+            id="btn-served"
+            onclick="markServed()"
+            disabled
+          >
+            ✓ Mark as Served
+          </button>
 
           <div class="wait-info">
             <div class="wait-stat">
@@ -56,28 +68,34 @@
                 <span id="clinic-status-text">Open</span>
               </div>
             </div>
+            <button
+              class="status-toggle-btn status-toggle--open"
+              id="status-toggle-btn"
+              onclick="toggleClinicStatus()"
+            >
+              Set to Closed
+            </button>
           </div>
         </div>
       </aside>
 
       <div class="right-panel">
-        <form class="add-card" id="add-queue-form">
+        <div class="add-card">
           <div class="card-title">Add to queue</div>
           <div class="form-row">
             <div class="field">
-              <label for="inp-name">Name</label>
+              <label>Name</label>
               <input
                 type="text"
                 id="inp-name"
-                placeholder="Enter patient's full name"
-                name="name"
+                placeholder="e.g. John Santos"
                 maxlength="40"
                 onkeydown="if (event.key === 'Enter') addToQueue();"
               />
             </div>
             <div class="field">
-              <label for="inp-service">Service type</label>
-              <select id="inp-service" name="serviceType">
+              <label>Service type</label>
+              <select id="inp-service">
                 <option value="general">General</option>
                 <option value="support">Support</option>
                 <option value="priority">Priority</option>
@@ -94,18 +112,23 @@
                 placeholder="Describe your concern or reason for visit..."
               ></textarea>
             </div>
-            <button type="submit" class="btn-add" >+ Add</button>
+            <button class="btn-add" onclick="addToQueue()">+ Add</button>
           </div>
-        </form>
+        </div>
 
         <div class="queue-card">
           <div class="queue-header">
             <div class="card-title" style="margin: 0">Waiting queue</div>
+            <button class="clear-btn" onclick="clearAll()">Clear all</button>
           </div>
           <ul class="queue-list" id="queue-list">
-            <li class="empty-state" id="empty-state"></li>
+            <li class="empty-state" id="empty-state">
+              <div class="empty-icon">◻</div>
+              <p>Queue is empty. Add someone above.</p>
+            </li>
           </ul>
         </div>
+
       </div>
     </main>
 
@@ -116,6 +139,6 @@
 
     <div id="toast"></div>
 
-    <script src="js/script.js"></script>
+    <script src="js/Adminscript.js"></script>
   </body>
 </html>

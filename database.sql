@@ -1,8 +1,4 @@
-CREATE DATABASE IF NOT EXISTS careflow;
-USE careflow;
-
-
-
+USE s25101336_test;
 
 CREATE TABLE users (
   user_id INT AUTO_INCREMENT PRIMARY KEY,
