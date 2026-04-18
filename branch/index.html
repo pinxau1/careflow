@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CareFlow — Hospital Queue Management</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+</head>
+<body>
+ 
+    <!-- TOPBAR -->
+    <header class="topbar">
+    <a class="logo" href="#" onclick="showPage('dept')">
+        <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L12 22M2 12L22 12"/>
+            <rect x="8" y="8" width="8" height="8" rx="1" fill="white" stroke="none" opacity="0.3"/>
+        </svg>
+        </div>
+        CareFlow
+    </a>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-actions">
+        <button class="icon-btn" onclick="toggleNotif()" title="Notifications" id="notif-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span class="notif-dot"></span>
+        </button>
+        <div class="profile-btn">
+        <div class="avatar">MR</div>
+        <div class="profile-info">
+            <div class="profile-name">Maria Reyes</div>
+            <div class="profile-role">Head Nurse</div>
+        </div>
+        </div>
+    </div>
+    </header>
+    
+    <!-- NOTIFICATION PANEL -->
+    <div class="notif-panel" id="notif-panel">
+    <div class="notif-header">Notifications</div>
+    <div class="notif-item">
+        <div class="notif-dot2" style="background:var(--red)"></div>
+        <div>
+        <div class="notif-text"><strong>High priority</strong> patient detected in Geriatrics — Q-047</div>
+        <div class="notif-time">2 minutes ago</div>
+        </div>
+    </div>
+    <div class="notif-item">
+        <div class="notif-dot2"></div>
+        <div>
+        <div class="notif-text">Queue #038 has been waiting 40+ minutes in Gen Med</div>
+        <div class="notif-time">12 minutes ago</div>
+        </div>
+    </div>
+    <div class="notif-item">
+        <div class="notif-dot2"></div>
+        <div>
+        <div class="notif-text">Dr. Santos marked as available — Counter 2 resumed</div>
+        <div class="notif-time">28 minutes ago</div>
+        </div>
+    </div>
+    </div>
+    
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+    <button class="side-btn active" title="Departments" onclick="showPage('dept')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+        </svg>
+    </button>
+    <button class="side-btn" title="Queue" onclick="showPage('queue')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+        <line x1="8" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+        <line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+    </button>
+    <div class="sidebar-spacer"></div>
+    <button class="side-btn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+    </button>
+    <button class="side-btn" title="Log out" style="margin-bottom:0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+    </button>
+    </nav>
+    
+    <!-- MAIN -->
+    <main class="main">
+    
+    <!-- ── DEPARTMENT PAGE ── -->
+    <div class="page active" id="page-dept">
+        <div class="page-header">
+        <div class="page-title">Departments</div>
+        <div class="page-sub">Select a department to manage its queue</div>
+        </div>
+        <div class="search-filter-row">
+        <div class="search-wrap">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input class="search-input" type="text" placeholder="Search departments…" oninput="filterDepts(this.value)">
+        </div>
+        <div class="filter-group">
+            <button class="filter-chip active" onclick="setFilter('all',this)">All</button>
+            <button class="filter-chip" onclick="setFilter('patient-care',this)">Patient Care</button>
+            <button class="filter-chip" onclick="setFilter('laboratory',this)">Laboratory</button>
+            <button class="filter-chip" onclick="setFilter('support',this)">Support</button>
+        </div>
+        </div>
+        <div class="dept-grid" id="dept-grid"></div>
+    </div>
+    
+    <!-- ── QUEUE PAGE ── -->
+    <div class="page" id="page-queue">
+        <div class="back-row">
+        <button class="back-btn" onclick="showPage('dept')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            Departments
+        </button>
+        <div class="dept-badge">
+            <span class="dept-badge-dot"></span>
+            <span id="active-dept-name">Gen Med / Internal Medicine</span>
+        </div>
+        </div>
+    
+        <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('main',this)">Queue Management</button>
+        <button class="tab-btn" onclick="switchTab('line',this)">Queue Line</button>
+        </div>
+    
+        <!-- TAB 1 - MAIN -->
+        <div class="tab-content active" id="tab-main">
+        <!-- Counter cards -->
+        <div class="counters-row" id="counters-row"></div>
+    
+        <!-- Queue card + Next up -->
+        <div class="queue-main-row">
+            <div class="queue-card" id="queue-card">
+            <div class="queue-number-section">
+                <div class="queue-now-label">Now Serving</div>
+                <div class="queue-number" id="q-number">042</div>
+                <div class="queue-patient-name" id="q-name">Rosario Mendoza</div>
+                <div class="queue-patient-sub" id="q-sub">F · 72 years</div>
+                <div class="queue-chips">
+                <span class="priority-chip high" id="q-priority">High</span>
+                <span class="time-chip" id="q-time">Called at 09:34 AM</span>
+                </div>
+            </div>
+            <div class="queue-divider"></div>
+            <div class="queue-actions-section">
+                <button class="btn-recall" onclick="recallQueue()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Recall
+                </button>
+                <button class="btn-skip" onclick="skipQueue()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 17 12 12 5 7"/><polyline points="14 17 21 12 14 7"/></svg>
+                Skip
+                </button>
+            </div>
+            </div>
+    
+            <div class="next-card">
+            <div class="next-label">Up Next</div>
+            <div id="next-list"></div>
+            </div>
+        </div>
+    
+        <!-- Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+            <div class="stat-label">Patients in Queue</div>
+            <div class="stat-value" id="stat-queue">18</div>
+            </div>
+            <div class="stat-card">
+            <div class="stat-label">Patients Served Today</div>
+            <div class="stat-value" id="stat-served">47</div>
+            <div class="stat-sub up" id="stat-served-sub">↑ +12% from yesterday</div>
+            </div>
+            <div class="stat-card">
+            <div class="stat-label">Currently Waiting</div>
+            <div class="stat-value" id="stat-waiting">14</div>
+            </div>
+            <div class="stat-card">
+            <div class="stat-label">Avg Wait Time</div>
+            <div class="stat-value" id="stat-wait">~23 min</div>
+            <div class="stat-sub dn" id="stat-wait-sub">↑ +8% from yesterday</div>
+            </div>
+        </div>
+        </div>
+    
+        <!-- TAB 2 - QUEUE LINE -->
+        <div class="tab-content" id="tab-line">
+        <div class="queue-line-header">
+            <div style="font-size:15px;font-weight:600;color:var(--text)">All Patients <span style="color:var(--text3);font-weight:400;font-size:13px" id="line-count"></span></div>
+            <button class="btn-add-patient" onclick="openModal()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Patient
+            </button>
+        </div>
+        <div class="queue-table-wrap">
+            <table>
+            <thead>
+                <tr>
+                <th>Priority</th>
+                <th>Queue #</th>
+                <th>Patient Name</th>
+                <th>Status</th>
+                <th>Counter</th>
+                <th>AI Wait</th>
+                <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="queue-tbody"></tbody>
+            </table>
+        </div>
+        </div>
+    </div>
+    
+    </main>
+    
+    <!-- AI PRIORITY BUBBLE -->
+    <button class="ai-bubble-btn" onclick="toggleAI()" title="AI Priority Assistant">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a10 10 0 1 0 10 10"/>
+        <path d="M12 8v4l3 3"/>
+        <circle cx="18" cy="5" r="3" fill="white" stroke="none"/>
+        <text x="15.5" y="7.5" font-size="4" fill="#1d9c6c" font-weight="bold">AI</text>
+    </svg>
+    <span class="ai-ping" id="ai-ping"></span>
+    </button>
+    
+    <!-- AI PANEL -->
+    <div class="ai-panel" id="ai-panel">
+    <div class="ai-panel-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        <span class="ai-panel-title">AI Priority Alert</span>
+        <button class="ai-close" onclick="toggleAI()">×</button>
+    </div>
+    <div class="ai-alert">
+        <div class="ai-alert-icon">⚠</div>
+        <div>
+        <div class="ai-alert-text">
+            <strong>Q-052 · Gian </strong> Vitals indicate possible cardiac distress. Recommend moving to top of queue.
+            <small>Detected 2 min ago · Confidence 94%</small>
+        </div>
+        </div>
+    </div>
+    <div class="ai-panel-actions">
+        <button class="ai-act-btn primary" onclick="acceptAI()">Promote Q-047</button>
+        <button class="ai-act-btn secondary" onclick="toggleAI()">Dismiss</button>
+    </div>
+    </div>
+    
+    <!-- ADD PATIENT MODAL -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModalOuter(event)">
+    <div class="modal">
+        <div class="modal-header">
+        <span class="modal-title">Add Patient to Queue</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div class="modal-body">
+        <div class="form-row">
+            <div class="form-group">
+            <label>First Name</label>
+            <input type="text" id="f-first" placeholder="e.g. Juan">
+            </div>
+            <div class="form-group">
+            <label>Last Name</label>
+            <input type="text" id="f-last" placeholder="e.g. dela Cruz">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+            <label>Gender</label>
+            <select id="f-gender">
+                <option>M</option><option>F</option><option>Other</option>
+            </select>
+            </div>
+            <div class="form-group">
+            <label>Age</label>
+            <input type="number" id="f-age" placeholder="e.g. 45" min="0" max="120">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+            <label>Priority Level</label>
+            <select id="f-priority">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+            </select>
+            </div>
+            <div class="form-group">
+            <label>Counter</label>
+            <select id="f-counter">
+                <option>Counter 1 — Dr. Santos</option>
+                <option>Counter 2 — Dr. Ramos</option>
+                <option>Counter 3 — Dr. Torres</option>
+            </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group full">
+            <label>Notes (optional)</label>
+            <input type="text" id="f-notes" placeholder="Chief complaint or remarks">
+            </div>
+        </div>
+        </div>
+        <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-submit" onclick="addPatient()">Add to Queue</button>
+        </div>
+    </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
