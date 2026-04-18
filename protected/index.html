@@ -1,1183 +1,334 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CareFlow | Dashboard</title>
-    <link rel="stylesheet" href="css/style.css" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined"
-      rel="stylesheet"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-  </head>
-  <body>
-    <div class="dash-main" id="indexFlow">
-      <div class="sidebar">
-        <div class="cf-logo">
-          <div class="logo-icon">
-            <span class="material-symbols-outlined">ecg_heart</span>
-          </div>
-          <div>
-            <div class="logo-name">CareFlow</div>
-            <div class="logo-sub">Queue Management</div>
-          </div>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CareFlow — Hospital Queue Management</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="/public/css/style.css" rel="stylesheet">
+</head>
+<body>
+ 
+    <!-- TOPBAR -->
+    <header class="topbar">
+    <a class="logo" href="#" onclick="showPage('dept')">
+        <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L12 22M2 12L22 12"/>
+            <rect x="8" y="8" width="8" height="8" rx="1" fill="white" stroke="none" opacity="0.3"/>
+        </svg>
         </div>
-
-        <div class="feature-list">
-          <ul>
-            <li class="active-feature" data-page="dashboard">
-              <span class="material-symbols-outlined">dashboard</span
-              ><a>Dashboard</a>
-            </li>
-            <li data-page="settings">
-              <span class="material-symbols-outlined">settings</span
-              ><a>Settings</a>
-            </li>
-          </ul>
+        CareFlow
+    </a>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-actions">
+        <button class="icon-btn" onclick="toggleNotif()" title="Notifications" id="notif-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span class="notif-dot"></span>
+        </button>
+        <div class="profile-btn">
+        <div class="avatar">MR</div>
+        <div class="profile-info">
+            <div class="profile-name">Maria Reyes</div>
+            <div class="profile-role">Head Nurse</div>
         </div>
-
-        <div class="sidebar-widget">
-          <div class="widget-label">On Duty</div>
-          <div class="doctor-name">Dr. JP Pinakagwapo</div>
-          <div class="doctor-status status-available" id="doctor-status">
-            <span class="status-dot"></span>
-            <span id="doctor-status-text">Available</span>
-          </div>
-          <div class="break-time hidden" id="break-time">
-            <span class="material-symbols-outlined">schedule</span>
-            Back at <span id="break-return">10:30 AM</span>
-          </div>
         </div>
-
-        <div class="sidebar-widget">
-          <div class="slots-header">
-            <span class="widget-label">Today's Queue</span>
-            <span class="slots-count" id="slots-count">5 / 50</span>
-          </div>
-          <div class="slots-bar-track">
-            <div
-              class="slots-bar"
-              id="slots-bar"
-              style="width: 10%"
-              data-level="normal"
-            ></div>
-          </div>
-          <div class="slots-remaining" id="slots-remaining">
-            45 slots remaining
-          </div>
-        </div>
-
-        <div style="flex: 1"></div>
-
-        <a class="logout-btn" id="btn-logout">
-          <span class="material-symbols-outlined">logout</span> Logout
-        </a>
-      </div>
-
-      <div class="main-area">
-        <div class="topbar">
-          <div>
-            <h1 class="page-title" id="page-title">Queue Dashboard</h1>
-            <p class="page-sub">Real-time patient queue monitoring</p>
-          </div>
-          <div class="right-side">
-            <div class="status" id="queue-status" data-status="open">
-              <div class="status-open" data-value="open">
-                <span class="status-dot-sm"></span> Open
-              </div>
-              <div class="status-pause" data-value="pause">
-                <span class="material-symbols-outlined">pause</span> Pause
-              </div>
-              <div class="status-closed" data-value="close">
-                <span class="material-symbols-outlined">close</span> Close
-              </div>
-            </div>
-
-            <button class="emergency-btn" id="btn-emergency-open">
-              <span class="material-symbols-outlined">bolt</span> Emergency
-            </button>
-
-            <div class="notif-bell" id="notif-bell">
-              <span class="material-symbols-outlined">notifications</span>
-              <span class="notif-count">3</span>
-            </div>
-
-            <div class="admin-profile">
-              <div class="admin-avatar">JP</div>
-              <div>
-                <div class="admin-name">Dr. JP Pinakagwapo</div>
-                <div class="admin-role">Administrator</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="counter-tabs-row" id="counter-tabs-row">
-          <button class="counter-tab active-tab" data-counter="all">
-            All Counters
-          </button>
-          <button class="counter-tab" data-counter="doctor-a">Doctor A</button>
-          <button class="counter-tab" data-counter="doctor-b">Doctor B</button>
-          <button class="counter-tab" data-counter="nurse">
-            Nurse Station
-          </button>
-          <button class="counter-tab" data-counter="dental">Dental</button>
-          <button class="counter-tab" data-counter="lab">Lab</button>
-        </div>
-
-        <div id="banners">
-          <div class="banner banner-amber" id="banner-cutoff">
-            <span class="material-symbols-outlined">warning</span>
-            <span
-              >At current pace, <strong>6 patients</strong> may not be served
-              before closing at <strong>5:00 PM</strong>.</span
-            >
-            <div class="banner-actions">
-              <button class="btn btn-outline-amber">Extend Hours</button>
-              <button class="btn btn-amber">Close Queue Now</button>
-            </div>
-            <button class="banner-close" data-target="banner-cutoff">
-              <span class="material-symbols-outlined">close</span>
-            </button>
-          </div>
-
-          <div class="banner banner-red hidden" id="banner-closed">
-            <span class="material-symbols-outlined">cancel</span>
-            <span>Queue closed. Slot limit reached.</span>
-            <div class="banner-actions">
-              <button class="btn btn-outline-red">Override &amp; Reopen</button>
-            </div>
-            <button class="banner-close" data-target="banner-closed">
-              <span class="material-symbols-outlined">close</span>
-            </button>
-          </div>
-
-          <div class="banner banner-amber hidden" id="banner-break">
-            <span class="material-symbols-outlined">coffee</span>
-            <span
-              ><strong>Doctor on break.</strong> AI wait times paused. Resumes
-              at <strong id="banner-break-time">10:30 AM</strong>.</span
-            >
-            <div class="banner-actions">
-              <button class="btn btn-green" id="btn-doctor-returned">
-                Mark as Returned
-              </button>
-            </div>
-            <button class="banner-close" data-target="banner-break">
-              <span class="material-symbols-outlined">close</span>
-            </button>
-          </div>
-
-          <div class="banner banner-red hidden" id="banner-offline">
-            <span class="material-symbols-outlined">wifi_off</span>
-            <span
-              ><strong>Offline.</strong> Changes will sync when connection
-              restores.</span
-            >
-            <button class="banner-close" data-target="banner-offline">
-              <span class="material-symbols-outlined">close</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="page-wrap">
-          <div class="page active-page" id="page-dashboard">
-            <div id="counter-overview">
-              <h2 class="section-title">Counter Overview</h2>
-              <div class="counter-cards-row">
-                <div class="counter-card" data-counter="doctor-a">
-                  <div class="counter-card-top">
-                    <span class="counter-name">Doctor A</span>
-                    <div class="counter-status status-available">
-                      <span class="status-dot"></span> Available
-                    </div>
-                  </div>
-                  <div class="divider"></div>
-                  <div class="counter-label-sm">Now Serving</div>
-                  <div class="counter-code">S001</div>
-                  <div class="counter-patient">Kairi Dynasty</div>
-                  <div class="counter-stats-row">
-                    <div class="counter-stat">
-                      <span class="number">4</span><span>Queue</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number">~12m</span><span>Wait</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number">45</span><span>Slots left</span>
-                    </div>
-                  </div>
-                  <div class="slots-bar-track">
-                    <div
-                      class="slots-bar"
-                      style="width: 10%"
-                      data-level="normal"
-                    ></div>
-                  </div>
-                </div>
-
-                <div
-                  class="counter-card counter-card-break"
-                  data-counter="doctor-b"
-                >
-                  <div class="counter-card-top">
-                    <span class="counter-name">Doctor B</span>
-                    <div class="counter-status status-break">
-                      <span class="status-dot"></span> On Break
-                    </div>
-                  </div>
-                  <div class="divider"></div>
-                  <div class="counter-label-sm">Now Serving</div>
-                  <div class="counter-code muted">—</div>
-                  <div class="counter-patient">Back at 11:00 AM</div>
-                  <div class="counter-stats-row">
-                    <div class="counter-stat">
-                      <span class="number">3</span><span>Queue</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number amber">Paused</span><span>Wait</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number">47</span><span>Slots left</span>
-                    </div>
-                  </div>
-                  <div class="slots-bar-track">
-                    <div
-                      class="slots-bar"
-                      style="width: 6%"
-                      data-level="normal"
-                    ></div>
-                  </div>
-                </div>
-
-                <div class="counter-card" data-counter="nurse">
-                  <div class="counter-card-top">
-                    <span class="counter-name">Nurse Station</span>
-                    <div class="counter-status status-available">
-                      <span class="status-dot"></span> Available
-                    </div>
-                  </div>
-                  <div class="divider"></div>
-                  <div class="counter-label-sm">Now Serving</div>
-                  <div class="counter-code">N004</div>
-                  <div class="counter-patient">Kent Maroxas</div>
-                  <div class="counter-stats-row">
-                    <div class="counter-stat">
-                      <span class="number">7</span><span>Queue</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number">~4m</span><span>Wait</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number">38</span><span>Slots left</span>
-                    </div>
-                  </div>
-                  <div class="slots-bar-track">
-                    <div
-                      class="slots-bar"
-                      style="width: 24%"
-                      data-level="warn"
-                    ></div>
-                  </div>
-                </div>
-
-                <div
-                  class="counter-card counter-card-closed"
-                  data-counter="dental"
-                >
-                  <div class="counter-card-top">
-                    <span class="counter-name">Dental</span>
-                    <div class="counter-status status-closed">
-                      <span class="status-dot"></span> Closed Today
-                    </div>
-                  </div>
-                  <div class="divider"></div>
-                  <div class="counter-label-sm">Next Available</div>
-                  <div class="counter-code muted">—</div>
-                  <div class="counter-patient">Opens tomorrow</div>
-                  <div class="counter-stats-row">
-                    <div class="counter-stat">
-                      <span class="number muted">—</span><span>Queue</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number muted">—</span><span>Wait</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number muted">—</span><span>Slots</span>
-                    </div>
-                  </div>
-                  <div class="slots-bar-track">
-                    <div class="slots-bar" style="width: 0%"></div>
-                  </div>
-                </div>
-
-                <div class="counter-card" data-counter="lab">
-                  <div class="counter-card-top">
-                    <span class="counter-name">Lab</span>
-                    <div class="counter-status status-available">
-                      <span class="status-dot"></span> Available
-                    </div>
-                  </div>
-                  <div class="divider"></div>
-                  <div class="counter-label-sm">Now Serving</div>
-                  <div class="counter-code">L002</div>
-                  <div class="counter-patient">Dylan Paler</div>
-                  <div class="counter-stats-row">
-                    <div class="counter-stat">
-                      <span class="number">2</span><span>Queue</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number">~6m</span><span>Wait</span>
-                    </div>
-                    <div class="counter-stat">
-                      <span class="number">48</span><span>Slots left</span>
-                    </div>
-                  </div>
-                  <div class="slots-bar-track">
-                    <div
-                      class="slots-bar"
-                      style="width: 4%"
-                      data-level="normal"
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="boxes-container">
-              <div class="box">
-                <span class="material-symbols-outlined">group</span>
-                <div class="box-label">Patients in Queue</div>
-                <div class="number" id="stat-in-queue">4</div>
-              </div>
-              <div class="box">
-                <span class="material-symbols-outlined">check_circle</span>
-                <div class="box-label">Served Today</div>
-                <div class="number" id="stat-served">12</div>
-                <div class="trend trend-up">
-                  <span class="material-symbols-outlined">arrow_upward</span>
-                  +8.2% from yesterday
-                </div>
-              </div>
-              <div class="box">
-                <span class="material-symbols-outlined">schedule</span>
-                <div class="box-label">Currently Waiting</div>
-                <div class="number" id="stat-waiting">4</div>
-              </div>
-              <div class="box">
-                <span class="material-symbols-outlined">timer</span>
-                <div class="box-label">Avg. Wait Time</div>
-                <div class="number green" id="stat-avg-wait">~18 min</div>
-                <div class="trend trend-down">
-                  <span class="material-symbols-outlined">arrow_downward</span>
-                  -3 min from yesterday
-                </div>
-                <div class="ai-label">AI Updated · just now</div>
-              </div>
-            </div>
-
-            <div class="now-serving-card">
-              <div class="now-serving-left">
-                <div class="now-serving-eyebrow">NOW SERVING</div>
-                <div id="current-queue">S001</div>
-                <div class="serving-name" id="serving-name">kairi Dynasty</div>
-                <div class="serving-age" id="serving-age">72 years old</div>
-
-                <div class="serving-badges">
-                  <span class="badge badge-senior" id="serving-cat"
-                    >Senior Citizen</span
-                  >
-                  <span class="badge badge-new" id="serving-visit"
-                    >New Visit</span
-                  >
-                  <div class="serving-called">
-                    <span class="material-symbols-outlined">schedule</span>
-                    Called at <span id="serving-called-time">09:15 AM</span>
-                  </div>
-                </div>
-
-                <div class="serving-counter">
-                  <span class="material-symbols-outlined">arrow_forward</span>
-                  <span id="serving-counter-name">Doctor A · Room 2</span>
-                </div>
-
-                <div class="next-or-no">
-                  <button class="next-button" id="btn-call-next">
-                    <span class="material-symbols-outlined">call</span> Call
-                    Next
-                  </button>
-                  <button class="btn btn-outline-amber" id="btn-skip">
-                    <span class="material-symbols-outlined">skip_next</span>
-                    Skip
-                  </button>
-                  <button class="btn btn-outline-red" id="btn-no-show">
-                    <span class="material-symbols-outlined">person_off</span> No
-                    Show
-                  </button>
-                  <button class="btn btn-outline-blue" id="btn-recall">
-                    <span class="material-symbols-outlined">replay</span> Recall
-                  </button>
-                </div>
-              </div>
-
-              <div class="grace-timer hidden" id="grace-timer">
-                <svg
-                  viewBox="0 0 80 80"
-                  width="80"
-                  height="80"
-                  style="transform: rotate(-90deg)"
-                >
-                  <circle
-                    cx="40"
-                    cy="40"
-                    r="34"
-                    fill="none"
-                    stroke="#E5E7EB"
-                    stroke-width="5"
-                  />
-                  <circle
-                    cx="40"
-                    cy="40"
-                    r="34"
-                    fill="none"
-                    stroke="#F59E0B"
-                    stroke-width="5"
-                    stroke-linecap="round"
-                    stroke-dasharray="213.6"
-                    stroke-dashoffset="53"
-                    id="grace-progress"
-                  />
-                </svg>
-                <div class="grace-time" id="grace-time">3:00</div>
-                <div class="grace-label">Auto No-Show in</div>
-              </div>
-            </div>
-
-            <div class="table-card">
-              <div class="table-toolbar">
-                <div class="toolbar-left">
-                  <div class="search-bar">
-                    <span class="material-symbols-outlined">search</span>
-                    <input
-                      type="text"
-                      id="queue-search"
-                      placeholder="Search name or queue code..."
-                    />
-                  </div>
-                  <div class="filter-wrap">
-                    <button class="btn btn-outline" id="filter-btn">
-                      <span class="material-symbols-outlined">filter_list</span>
-                      Filter: All
-                      <span class="material-symbols-outlined"
-                        >arrow_drop_down</span
-                      >
-                    </button>
-                    <div class="filter-menu hidden" id="filter-menu">
-                      <div class="filter-option active" data-filter="all">
-                        All
-                      </div>
-                      <div class="filter-option" data-filter="priority">
-                        Priority
-                      </div>
-                      <div class="filter-option" data-filter="waiting">
-                        Waiting
-                      </div>
-                      <div class="filter-option" data-filter="done">Done</div>
-                      <div class="filter-option" data-filter="no-show">
-                        No-Show
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="toolbar-right">
-                  <button class="btn btn-amber" id="btn-quick-add-open">
-                    <span class="material-symbols-outlined">bolt</span> Quick
-                    Add
-                  </button>
-                  <button class="next-button" id="btn-add-patient-open">
-                    <span class="material-symbols-outlined">person_add</span>
-                    Add Patient
-                  </button>
-                </div>
-              </div>
-
-              <div class="table-wrap">
-                <table class="queue-table" id="queue-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Code</th>
-                      <th>Patient</th>
-                      <th>Category</th>
-                      <th>Status</th>
-                      <th>Visit</th>
-                      <th>Counter</th>
-                      <th>Arrived</th>
-                      <th>AI Wait</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      class="row-serving"
-                      data-pool="priority"
-                      data-counter="doctor-a"
-                    >
-                      <td><span class="pool-pos priority-pos">P1</span></td>
-                      <td>
-                        <div class="code-cell">
-                          <span class="cat-dot dot-senior"></span
-                          ><span class="code-mono">S001</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div class="patient-name">kairi Dynasty</div>
-                        <div class="patient-age">72 yrs</div>
-                      </td>
-                      <td>
-                        <span class="badge badge-senior">Senior Citizen</span>
-                      </td>
-                      <td><span class="badge badge-serving">Serving</span></td>
-                      <td><span class="badge badge-new">New Visit</span></td>
-                      <td>Doctor A</td>
-                      <td>
-                        <div class="arrived-time">09:15 AM</div>
-                        <div class="arrived-ago">32 min ago</div>
-                      </td>
-                      <td>
-                        <div class="ai-wait green">Now</div>
-                        <div class="ai-label">Serving</div>
-                      </td>
-                      <td>
-                        <div class="row-actions">
-                          <button class="icon-btn" title="Call">
-                            <span class="material-symbols-outlined">call</span>
-                          </button>
-                          <button class="icon-btn" title="Skip">
-                            <span class="material-symbols-outlined"
-                              >skip_next</span
-                            >
-                          </button>
-                          <button class="icon-btn" title="RTN">
-                            <span class="material-symbols-outlined"
-                              >replay</span
-                            >
-                          </button>
-                          <button
-                            class="icon-btn icon-btn-red"
-                            title="Void"
-                            data-action="void"
-                            data-code="S001"
-                            data-name="kairi Dynasty"
-                          >
-                            <span class="material-symbols-outlined"
-                              >delete</span
-                            >
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-
-                    <tr
-                      class="row-waiting"
-                      data-pool="priority"
-                      data-counter="doctor-a"
-                    >
-                      <td><span class="pool-pos priority-pos">P2</span></td>
-                      <td>
-                        <div class="code-cell">
-                          <span class="cat-dot dot-pwd"></span
-                          ><span class="code-mono">P001</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div class="patient-name">Nathan Gwapo</div>
-                        <div class="patient-age">45 yrs</div>
-                      </td>
-                      <td><span class="badge badge-pwd">PWD</span></td>
-                      <td><span class="badge badge-waiting">Waiting</span></td>
-                      <td>
-                        <span class="badge badge-followup">Follow-Up</span>
-                      </td>
-                      <td>Doctor A</td>
-                      <td>
-                        <div class="arrived-time">07:57 AM</div>
-                        <div class="arrived-ago">22 min ago</div>
-                      </td>
-                      <td>
-                        <div class="ai-wait green">~12 min</div>
-                        <div class="ai-label">
-                          AI Est.
-                          <span class="material-symbols-outlined ai-refresh"
-                            >refresh</span
-                          >
-                        </div>
-                      </td>
-                      <td>
-                        <div class="row-actions">
-                          <button class="icon-btn" title="Call">
-                            <span class="material-symbols-outlined">call</span>
-                          </button>
-                          <button class="icon-btn" title="Skip">
-                            <span class="material-symbols-outlined"
-                              >skip_next</span
-                            >
-                          </button>
-                          <button class="icon-btn" title="RTN">
-                            <span class="material-symbols-outlined"
-                              >replay</span
-                            >
-                          </button>
-                          <button
-                            class="icon-btn icon-btn-red"
-                            title="Void"
-                            data-action="void"
-                            data-code="P001"
-                            data-name="Nathan Gwapo"
-                          >
-                            <span class="material-symbols-outlined"
-                              >delete</span
-                            >
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-
-                    <tr class="priority-separator">
-                      <td colspan="10">
-                        ── Priority Patients Above · Regular Patients Below ──
-                      </td>
-                    </tr>
-
-                    <tr
-                      class="row-waiting row-alt"
-                      data-pool="regular"
-                      data-counter="doctor-a"
-                    >
-                      <td><span class="pool-pos regular-pos">R1</span></td>
-                      <td>
-                        <div class="code-cell">
-                          <span class="cat-dot dot-regular"></span
-                          ><span class="code-mono">R001</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div class="patient-name">Kent Maroxas</div>
-                        <div class="patient-age">34 yrs</div>
-                      </td>
-                      <td><span class="badge badge-regular">Regular</span></td>
-                      <td><span class="badge badge-waiting">Waiting</span></td>
-                      <td><span class="badge badge-new">New Visit</span></td>
-                      <td>Doctor A</td>
-                      <td>
-                        <div class="arrived-time">07:45 AM</div>
-                        <div class="arrived-ago">54 min ago</div>
-                      </td>
-                      <td>
-                        <div class="ai-wait green">~35 min</div>
-                        <div class="ai-label">
-                          AI Est.
-                          <span class="material-symbols-outlined ai-refresh"
-                            >refresh</span
-                          >
-                        </div>
-                      </td>
-                      <td>
-                        <div class="row-actions">
-                          <button class="icon-btn" title="Call">
-                            <span class="material-symbols-outlined">call</span>
-                          </button>
-                          <button class="icon-btn" title="Skip">
-                            <span class="material-symbols-outlined"
-                              >skip_next</span
-                            >
-                          </button>
-                          <button class="icon-btn" title="RTN">
-                            <span class="material-symbols-outlined"
-                              >replay</span
-                            >
-                          </button>
-                          <button
-                            class="icon-btn icon-btn-red"
-                            title="Void"
-                            data-action="void"
-                            data-code="R001"
-                            data-name="Kent Maroxas"
-                          >
-                            <span class="material-symbols-outlined"
-                              >delete</span
-                            >
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-
-                    <tr
-                      class="row-noshow row-alt"
-                      data-pool="regular"
-                      data-counter="doctor-a"
-                    >
-                      <td>
-                        <span class="pool-pos regular-pos muted">R2</span>
-                      </td>
-                      <td>
-                        <div class="code-cell">
-                          <span class="cat-dot dot-regular"></span
-                          ><span class="code-mono muted">R002</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div class="patient-name muted">Boret Pansoy</div>
-                        <div class="patient-age">58 yrs</div>
-                      </td>
-                      <td><span class="badge badge-regular">Regular</span></td>
-                      <td><span class="badge badge-noshow">No-Show</span></td>
-                      <td><span class="badge badge-rxonly">Rx Only</span></td>
-                      <td>Doctor A</td>
-                      <td>
-                        <div class="arrived-time muted">08:00 AM</div>
-                        <div class="arrived-ago">—</div>
-                      </td>
-                      <td><span class="muted">—</span></td>
-                      <td>
-                        <div class="row-actions">
-                          <button class="icon-btn" title="Recall">
-                            <span class="material-symbols-outlined"
-                              >replay</span
-                            >
-                          </button>
-                          <button
-                            class="icon-btn icon-btn-red"
-                            title="Void"
-                            data-action="void"
-                            data-code="R002"
-                            data-name="Boret Pansoy"
-                          >
-                            <span class="material-symbols-outlined"
-                              >delete</span
-                            >
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div class="table-pagination">
-                <span class="muted">Showing 1–4 of 4 patients</span>
-                <div class="pagination-btns">
-                  <button class="page-btn" disabled>← Previous</button>
-                  <button class="page-btn page-active">1</button>
-                  <button class="page-btn">Next →</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="page hidden" id="page-settings"></div>
-        </div>
-      </div>
-
-      <div class="queue-sidebar">
-        <div class="right-panel-header">
-          <h2>Next in Queue</h2>
-          <span class="badge badge-regular" id="waiting-count">4 waiting</span>
-        </div>
-
-        <div class="queue-section-label">
-          <span class="material-symbols-outlined">star</span> PRIORITY
-        </div>
-
-        <div class="queue-list" id="priority-list">
-          <div class="queue-item">
-            <span class="pool-pos priority-pos">P2</span>
-            <div class="queue-item-info">
-              <div class="queue-item-top">
-                <span class="code-mono">P001</span>
-                <span class="badge badge-pwd">PWD</span>
-              </div>
-              <div class="queue-item-name">Nathan Gwapo</div>
-              <div class="queue-item-time">
-                <span class="material-symbols-outlined">schedule</span> 07:57 AM
-              </div>
-            </div>
-            <div class="queue-item-wait">
-              <div class="ai-wait green">~12 min</div>
-              <div class="ai-label">AI Est.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="queue-section-divider">REGULAR</div>
-
-        <div class="queue-list" id="regular-list">
-          <div class="queue-item">
-            <span class="pool-pos regular-pos">R1</span>
-            <div class="queue-item-info">
-              <div class="queue-item-top">
-                <span class="code-mono">R001</span>
-                <span class="badge badge-regular">Regular</span>
-              </div>
-              <div class="queue-item-name">Kent Maroxas</div>
-              <div class="queue-item-time">
-                <span class="material-symbols-outlined">schedule</span> 07:45 AM
-              </div>
-            </div>
-            <div class="queue-item-wait">
-              <div class="ai-wait green">~35 min</div>
-              <div class="ai-label">AI Est.</div>
-            </div>
-          </div>
-          <div class="queue-item">
-            <span class="pool-pos regular-pos">R2</span>
-            <div class="queue-item-info">
-              <div class="queue-item-top">
-                <span class="code-mono">R002</span>
-                <span class="badge badge-regular">Regular</span>
-              </div>
-              <div class="queue-item-name">Dylan paler</div>
-              <div class="queue-item-time">
-                <span class="material-symbols-outlined">schedule</span> 08:10 AM
-              </div>
-            </div>
-            <div class="queue-item-wait">
-              <div class="ai-wait green">~43 min</div>
-              <div class="ai-label">AI Est.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="cutoff-card" id="cutoff-card" data-state="warning">
-          <div class="cutoff-top">
-            <span class="material-symbols-outlined">schedule</span>
-            Today's Cutoff Estimate
-          </div>
-          <div class="cutoff-time">Queue closes ~4:45 PM</div>
-          <div class="muted" style="font-size: 11px; font-style: italic">
-            Based on current pace · AI
-          </div>
-          <div class="cutoff-warning">
-            <span class="material-symbols-outlined">warning</span> 6 patients
-            may not finish
-          </div>
-        </div>
-      </div>
     </div>
-
-    <div class="modal-backdrop hidden" id="modal-backdrop"></div>
-
-    <div class="modal hidden" id="modal-add-patient">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h2>Register New Patient</h2>
-          <button class="modal-close" data-modal="modal-add-patient">
-            <span class="material-symbols-outlined">close</span>
-          </button>
+    </header>
+    
+    <!-- NOTIFICATION PANEL -->
+    <div class="notif-panel" id="notif-panel">
+    <div class="notif-header">Notifications</div>
+    <div class="notif-item">
+        <div class="notif-dot2" style="background:var(--red)"></div>
+        <div>
+        <div class="notif-text"><strong>High priority</strong> patient detected in Geriatrics — Q-047</div>
+        <div class="notif-time">2 minutes ago</div>
         </div>
-        <div class="modal-alert hidden" id="duplicate-warning">
-          <span class="material-symbols-outlined">warning</span>
-          A patient with this name is already registered today. Register anyway?
+    </div>
+    <div class="notif-item">
+        <div class="notif-dot2"></div>
+        <div>
+        <div class="notif-text">Queue #038 has been waiting 40+ minutes in Gen Med</div>
+        <div class="notif-time">12 minutes ago</div>
+        </div>
+    </div>
+    <div class="notif-item">
+        <div class="notif-dot2"></div>
+        <div>
+        <div class="notif-text">Dr. Santos marked as available — Counter 2 resumed</div>
+        <div class="notif-time">28 minutes ago</div>
+        </div>
+    </div>
+    </div>
+    
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+    <button class="side-btn active" title="Departments" onclick="showPage('dept')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+        </svg>
+    </button>
+    <button class="side-btn" title="Queue" onclick="showPage('queue')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+        <line x1="8" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+        <line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+    </button>
+    <div class="sidebar-spacer"></div>
+    <button class="side-btn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+    </button>
+    <button class="side-btn" title="Log out" style="margin-bottom:0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+    </button>
+    </nav>
+    
+    <!-- MAIN -->
+    <main class="main">
+    
+    <!-- ── DEPARTMENT PAGE ── -->
+    <div class="page active" id="page-dept">
+        <div class="page-header">
+        <div class="page-title">Departments</div>
+        <div class="page-sub">Select a department to manage its queue</div>
+        </div>
+        <div class="search-filter-row">
+        <div class="search-wrap">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input class="search-input" type="text" placeholder="Search departments…" oninput="filterDepts(this.value)">
+        </div>
+        <div class="filter-group">
+            <button class="filter-chip active" onclick="setFilter('all',this)">All</button>
+            <button class="filter-chip" onclick="setFilter('patient-care',this)">Patient Care</button>
+            <button class="filter-chip" onclick="setFilter('laboratory',this)">Laboratory</button>
+            <button class="filter-chip" onclick="setFilter('support',this)">Support</button>
+        </div>
+        </div>
+        <div class="dept-grid" id="dept-grid"></div>
+    </div>
+    
+    <!-- ── QUEUE PAGE ── -->
+    <div class="page" id="page-queue">
+        <div class="back-row">
+        <button class="back-btn" onclick="showPage('dept')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            Departments
+        </button>
+        <div class="dept-badge">
+            <span class="dept-badge-dot"></span>
+            <span id="active-dept-name">Gen Med / Internal Medicine</span>
+        </div>
+        </div>
+    
+        <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('main',this)">Queue Management</button>
+        <button class="tab-btn" onclick="switchTab('line',this)">Queue Line</button>
+        </div>
+    
+        <!-- TAB 1 - MAIN -->
+        <div class="tab-content active" id="tab-main">
+        <!-- Counter cards -->
+        <div class="counters-row" id="counters-row"></div>
+    
+        <!-- Queue card + Next up -->
+        <div class="queue-main-row">
+            <div class="queue-card" id="queue-card">
+            <div class="queue-number-section">
+                <div class="queue-now-label">Now Serving</div>
+                <div class="queue-number" id="q-number">042</div>
+                <div class="queue-patient-name" id="q-name">Rosario Mendoza</div>
+                <div class="queue-patient-sub" id="q-sub">F · 72 years</div>
+                <div class="queue-chips">
+                <span class="priority-chip high" id="q-priority">High</span>
+                <span class="time-chip" id="q-time">Called at 09:34 AM</span>
+                </div>
+            </div>
+            <div class="queue-divider"></div>
+            <div class="queue-actions-section">
+                <button class="btn-recall" onclick="recallQueue()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Recall
+                </button>
+                <button class="btn-skip" onclick="skipQueue()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 17 12 12 5 7"/><polyline points="14 17 21 12 14 7"/></svg>
+                Skip
+                </button>
+            </div>
+            </div>
+    
+            <div class="next-card">
+            <div class="next-label">Up Next</div>
+            <div id="next-list"></div>
+            </div>
+        </div>
+    
+        <!-- Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+            <div class="stat-label">Patients in Queue</div>
+            <div class="stat-value" id="stat-queue">18</div>
+            </div>
+            <div class="stat-card">
+            <div class="stat-label">Patients Served Today</div>
+            <div class="stat-value" id="stat-served">47</div>
+            <div class="stat-sub up" id="stat-served-sub">↑ +12% from yesterday</div>
+            </div>
+            <div class="stat-card">
+            <div class="stat-label">Currently Waiting</div>
+            <div class="stat-value" id="stat-waiting">14</div>
+            </div>
+            <div class="stat-card">
+            <div class="stat-label">Avg Wait Time</div>
+            <div class="stat-value" id="stat-wait">~23 min</div>
+            <div class="stat-sub dn" id="stat-wait-sub">↑ +8% from yesterday</div>
+            </div>
+        </div>
+        </div>
+    
+        <!-- TAB 2 - QUEUE LINE -->
+        <div class="tab-content" id="tab-line">
+        <div class="queue-line-header">
+            <div style="font-size:15px;font-weight:600;color:var(--text)">All Patients <span style="color:var(--text3);font-weight:400;font-size:13px" id="line-count"></span></div>
+            <button class="btn-add-patient" onclick="openModal()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Patient
+            </button>
+        </div>
+        <div class="queue-table-wrap">
+            <table>
+            <thead>
+                <tr>
+                <th>Priority</th>
+                <th>Queue #</th>
+                <th>Patient Name</th>
+                <th>Status</th>
+                <th>Counter</th>
+                <th>AI Wait</th>
+                <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="queue-tbody"></tbody>
+            </table>
+        </div>
+        </div>
+    </div>
+    
+    </main>
+    
+    <!-- AI PRIORITY BUBBLE -->
+    <button class="ai-bubble-btn" onclick="toggleAI()" title="AI Priority Assistant">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a10 10 0 1 0 10 10"/>
+        <path d="M12 8v4l3 3"/>
+        <circle cx="18" cy="5" r="3" fill="white" stroke="none"/>
+        <text x="15.5" y="7.5" font-size="4" fill="#1d9c6c" font-weight="bold">AI</text>
+    </svg>
+    <span class="ai-ping" id="ai-ping"></span>
+    </button>
+    
+    <!-- AI PANEL -->
+    <div class="ai-panel" id="ai-panel">
+    <div class="ai-panel-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        <span class="ai-panel-title">AI Priority Alert</span>
+        <button class="ai-close" onclick="toggleAI()">×</button>
+    </div>
+    <div class="ai-alert">
+        <div class="ai-alert-icon">⚠</div>
+        <div>
+        <div class="ai-alert-text">
+            <strong>Q-052 · Gian </strong> Vitals indicate possible cardiac distress. Recommend moving to top of queue.
+            <small>Detected 2 min ago · Confidence 94%</small>
+        </div>
+        </div>
+    </div>
+    <div class="ai-panel-actions">
+        <button class="ai-act-btn primary" onclick="acceptAI()">Promote Q-047</button>
+        <button class="ai-act-btn secondary" onclick="toggleAI()">Dismiss</button>
+    </div>
+    </div>
+    
+    <!-- ADD PATIENT MODAL -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModalOuter(event)">
+    <div class="modal">
+        <div class="modal-header">
+        <span class="modal-title">Add Patient to Queue</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
         </div>
         <div class="modal-body">
-          <div class="form-field">
-            <label>Which Counter? <span class="required">*</span></label>
-            <select id="patient-counter" class="form-input">
-              <option value="">Select a doctor / counter...</option>
-              <option value="doctor-a">Doctor A — General Medicine</option>
-              <option value="doctor-b">Doctor B — Pediatrics</option>
-              <option value="nurse">Nurse Station</option>
-              <option value="lab">Lab</option>
+        <div class="form-row">
+            <div class="form-group">
+            <label>First Name</label>
+            <input type="text" id="f-first" placeholder="e.g. Juan">
+            </div>
+            <div class="form-group">
+            <label>Last Name</label>
+            <input type="text" id="f-last" placeholder="e.g. dela Cruz">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+            <label>Gender</label>
+            <select id="f-gender">
+                <option>M</option><option>F</option><option>Other</option>
             </select>
-          </div>
-          <div class="form-field">
-            <label>Patient Category <span class="required">*</span></label>
-            <div class="category-btns" id="category-btns">
-              <button class="cat-btn" data-value="senior" data-prefix="S">
-                <span class="cat-dot dot-senior"></span> Senior Citizen
-              </button>
-              <button class="cat-btn" data-value="pwd" data-prefix="P">
-                <span class="cat-dot dot-pwd"></span> PWD
-              </button>
-              <button class="cat-btn" data-value="pregnant" data-prefix="W">
-                <span class="cat-dot dot-pregnant"></span> Pregnant
-              </button>
-              <button class="cat-btn" data-value="child" data-prefix="C">
-                <span class="cat-dot dot-child"></span> Child
-              </button>
-              <button class="cat-btn" data-value="solo" data-prefix="L">
-                <span class="cat-dot dot-solo"></span> Solo Parent
-              </button>
-              <button class="cat-btn" data-value="regular" data-prefix="R">
-                <span class="cat-dot dot-regular"></span> Regular
-              </button>
             </div>
-          </div>
-          <div class="form-field">
-            <label for="patient-name"
-              >Full Name <span class="required">*</span></label
-            >
-            <input
-              type="text"
-              id="patient-name"
-              class="form-input"
-              placeholder="Enter patient full name"
-            />
-          </div>
-          <div class="form-field">
-            <label for="patient-age">Age (Optional)</label>
-            <input
-              type="number"
-              id="patient-age"
-              class="form-input"
-              placeholder="Age"
-              min="0"
-              max="120"
-              style="max-width: 120px"
-            />
-          </div>
-          <div class="form-field">
-            <label>Visit Type <span class="required">*</span></label>
-            <div class="visit-type-btns">
-              <button class="visit-btn active-visit" data-value="new">
-                New Visit
-              </button>
-              <button class="visit-btn" data-value="followup">Follow-Up</button>
-              <button class="visit-btn" data-value="labreturn">
-                Lab Return
-              </button>
-              <button class="visit-btn" data-value="rxonly">Rx Only</button>
+            <div class="form-group">
+            <label>Age</label>
+            <input type="number" id="f-age" placeholder="e.g. 45" min="0" max="120">
             </div>
-          </div>
-          <div class="form-field">
-            <label>Visit Mode</label>
-            <div class="mode-toggle">
-              <button class="mode-btn active-mode" data-value="walkin">
-                Walk-In
-              </button>
-              <button class="mode-btn" data-value="scheduled">Scheduled</button>
-            </div>
-          </div>
-          <div class="form-field">
-            <label for="staff-note">Staff Logistics Note (Optional)</label>
-            <textarea
-              id="staff-note"
-              class="form-input"
-              rows="3"
-              placeholder="e.g. needs wheelchair, accompanied by guardian"
-            ></textarea>
-            <div class="field-warning">
-              <span class="material-symbols-outlined">warning</span> Do not
-              enter medical information.
-            </div>
-          </div>
         </div>
-        <div class="code-preview" id="code-preview">
-          <div class="code-preview-label">Queue Code</div>
-          <div class="code-preview-code" id="preview-code">—</div>
-          <div class="muted" id="preview-sub">Select category above</div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline" data-modal="modal-add-patient">
-            Cancel
-          </button>
-          <button class="next-button" id="btn-register">
-            <span class="material-symbols-outlined">print</span> Register &amp;
-            Print Ticket
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal hidden" id="modal-quick-add">
-      <div class="modal-card modal-sm">
-        <div class="modal-header">
-          <div>
-            <h2>Quick Register</h2>
-            <p class="muted">Tap category to register walk-in instantly</p>
-          </div>
-          <button class="modal-close" data-modal="modal-quick-add">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="quick-add-grid">
-            <button class="quick-btn quick-senior" data-quick-cat="senior">
-              <span class="material-symbols-outlined">elderly</span> Senior
-              Citizen
-            </button>
-            <button class="quick-btn quick-pwd" data-quick-cat="pwd">
-              <span class="material-symbols-outlined">accessible</span> PWD
-            </button>
-            <button class="quick-btn quick-pregnant" data-quick-cat="pregnant">
-              <span class="material-symbols-outlined">pregnant_woman</span>
-              Pregnant
-            </button>
-            <button class="quick-btn quick-child" data-quick-cat="child">
-              <span class="material-symbols-outlined">child_care</span> Child
-            </button>
-            <button class="quick-btn quick-solo" data-quick-cat="solo">
-              <span class="material-symbols-outlined">person</span> Solo Parent
-            </button>
-            <button class="quick-btn quick-regular" data-quick-cat="regular">
-              <span class="material-symbols-outlined">person_outline</span>
-              Regular
-            </button>
-          </div>
-          <div class="form-field" style="margin-top: 14px">
-            <label>Assigning to Counter</label>
-            <select class="form-input" id="quick-counter">
-              <option value="doctor-a">Doctor A</option>
-              <option value="doctor-b">Doctor B</option>
-              <option value="nurse">Nurse Station</option>
-              <option value="lab">Lab</option>
+        <div class="form-row">
+            <div class="form-group">
+            <label>Priority Level</label>
+            <select id="f-priority">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
             </select>
-          </div>
-          <p
-            class="muted"
-            style="text-align: center; margin-top: 10px; font-style: italic"
-          >
-            Name can be added when patient reaches counter
-          </p>
-        </div>
-      </div>
-    </div>
-
-    <div class="modal hidden" id="modal-emergency">
-      <div class="modal-card modal-sm emergency-modal">
-        <div class="modal-header">
-          <div style="display: flex; align-items: center; gap: 8px">
-            <span
-              class="material-symbols-outlined"
-              style="color: var(--red); font-size: 22px"
-              >bolt</span
-            >
-            <h2 style="color: var(--red)">Emergency Patient</h2>
-          </div>
-          <button class="modal-close" data-modal="modal-emergency">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <div class="modal-body">
-          <p class="emergency-warning">
-            This will place the patient
-            <strong>immediately at the front of the queue</strong>, bypassing
-            all waiting patients.
-          </p>
-          <div class="form-field">
-            <label for="emergency-name">Patient Name</label>
-            <input
-              type="text"
-              id="emergency-name"
-              class="form-input"
-              value="Emergency Patient"
-            />
-          </div>
-          <div class="form-field">
+            </div>
+            <div class="form-group">
             <label>Counter</label>
-            <select class="form-input" id="emergency-counter">
-              <option value="doctor-a">Doctor A</option>
-              <option value="nurse">Nurse Station</option>
+            <select id="f-counter">
+                <option>Counter 1 — Dr. Santos</option>
+                <option>Counter 2 — Dr. Ramos</option>
+                <option>Counter 3 — Dr. Torres</option>
             </select>
-          </div>
-          <p class="muted" style="font-size: 11px; margin-top: 6px">
-            Does not count toward slot limit. Auto-logged in audit trail.
-          </p>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group full">
+            <label>Notes (optional)</label>
+            <input type="text" id="f-notes" placeholder="Chief complaint or remarks">
+            </div>
+        </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-outline" data-modal="modal-emergency">
-            Cancel
-          </button>
-          <button class="btn btn-red" id="btn-add-emergency">
-            <span class="material-symbols-outlined">bolt</span> Add Emergency
-            Patient
-          </button>
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-submit" onclick="addPatient()">Add to Queue</button>
         </div>
-      </div>
     </div>
-
-    <div class="modal hidden" id="modal-void">
-      <div class="modal-card modal-sm">
-        <div class="modal-header">
-          <h2>Void Registration?</h2>
-          <button class="modal-close" data-modal="modal-void">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <div class="modal-body" style="text-align: center">
-          <div class="void-icon">
-            <span class="material-symbols-outlined">warning</span>
-          </div>
-          <p>
-            Remove <strong id="void-patient-label">this patient</strong> from
-            the queue?
-          </p>
-          <p class="muted" style="margin-top: 6px">
-            Action is logged. Record kept as Voided.
-          </p>
-        </div>
-        <div class="modal-footer" style="justify-content: center">
-          <button class="next-button" data-modal="modal-void">Cancel</button>
-          <button class="btn btn-outline-red" id="btn-confirm-void">
-            <span class="material-symbols-outlined">delete</span> Void
-            Registration
-          </button>
-        </div>
-      </div>
     </div>
-
-    <div class="toast-wrap" id="toast-wrap">
-      <div class="toast toast-green hidden" id="toast-calling">
-        <div class="toast-left">
-          <span class="material-symbols-outlined">campaign</span>
-          <div>
-            <div class="toast-title green">Now Calling</div>
-            <div class="toast-msg" id="toast-calling-msg">
-              S001 — Kairi Dynasty
-            </div>
-          </div>
-        </div>
-        <div class="toast-bar toast-bar-green"></div>
-      </div>
-
-      <div class="toast toast-amber hidden" id="toast-undo">
-        <div class="toast-left">
-          <span class="material-symbols-outlined">undo</span>
-          <div>
-            <div class="toast-title" id="toast-undo-msg">Marked No-Show</div>
-          </div>
-        </div>
-        <button class="undo-btn" id="btn-undo">Undo</button>
-        <div class="toast-bar toast-bar-amber"></div>
-      </div>
-
-      <div class="toast toast-green hidden" id="toast-slot">
-        <div class="toast-left">
-          <span class="material-symbols-outlined">check_circle</span>
-          <div>
-            <div class="toast-title green">+1 slot freed</div>
-            <div class="toast-msg">Queue updated</div>
-          </div>
-        </div>
-        <div class="toast-bar toast-bar-green"></div>
-      </div>
-
-      <div class="toast toast-blue hidden" id="toast-ai">
-        <div class="toast-left">
-          <span class="material-symbols-outlined">smart_toy</span>
-          <div>
-            <div class="toast-title">Wait times updated</div>
-            <div class="toast-msg">Queue recalculated · AI</div>
-          </div>
-        </div>
-        <div class="toast-bar toast-bar-blue"></div>
-      </div>
-    </div>
-
-    <script src="js/script.js"></script>
-  </body>
-</html>
+    
+    <script src="/public/js/script.js"></script>
+</body>
