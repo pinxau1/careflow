@@ -721,6 +721,53 @@ input {
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
 
+  .stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.green-icon {
+  background: var(--green-light);
+  color: var(--green);
+}
+
+.blue-icon {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+
+.amber-icon {
+  background: var(--amber-light);
+  color: var(--amber);
+}
+
+.red-ai-icon {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.amber-ai-icon {
+  background: var(--amber-light);
+  color: var(--amber);
+}
+
+.queue-line-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.queue-line-title span {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text3);
+  margin-left: 4px;
+}
 /* === END OF ADDED SCRIPT === */
 
 
