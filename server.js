@@ -39,13 +39,11 @@ console.log("this is the right file. ");
 function reqLogin(req, res, next) {
   if (!req.session || !req.session.uid) {
     return res.redirect('/login.html');
-    // return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
 }
 
 function reqAdmin(req, res, next) {
-
   if (req.session.role !== 'admin') {
     return res.redirect('/queue');
   }
@@ -123,8 +121,6 @@ app.post('/api/signup', async (req, res) => {
 });
 
 app.post('/api/login', async (req, res) => {
-
-
   let { username, password } = req.body;
 
   let conn;
@@ -142,9 +138,7 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
-
     if (await bcrypt.compare(password, user.password_hash)) {
-
       console.log('The data is intercepted');
       req.session.uid = user.user_id;
       req.session.role = user.role;
@@ -153,7 +147,6 @@ app.post('/api/login', async (req, res) => {
       res.json(({ "failed": false }));
       console.log('there is something wrong');
     }
-
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -210,7 +203,7 @@ app.patch('/api/admin/skip/:queue_id', reqLogin, reqAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.execute(
-      `UPDATE queues SET status = 'skipped' WHERE queue_id = ?`,
+      `UPDATE queues SET status = 'no_show' WHERE queue_id = ?`,
       [queue_id]
     );
     res.json({ success: true });
@@ -237,6 +230,41 @@ app.delete('/api/admin/delete/:queue_id', reqLogin, reqAdmin, async (req, res) =
   }
 });
 
+app.post('/api/admin/served', reqLogin, reqAdmin, async (req, res) => {
+  const { department_id } = req.body;
+  const conn = await pool.getConnection();
+  try {
+    await conn.execute(
+      `UPDATE queues
+       SET status = 'done', finished_at = NOW()
+       WHERE department_id = ? AND status = 'serving'`,
+      [department_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.post('/api/admin/clear', reqLogin, reqAdmin, async (req, res) => {
+  const { department_id } = req.body;
+  const conn = await pool.getConnection();
+  try {
+    await conn.execute(
+      `UPDATE queues SET status = 'void'
+       WHERE department_id = ? AND status = 'waiting'`,
+      [department_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
 app.post('/api/admin/next', reqLogin, reqAdmin, async (req, res) => {
   const { department_id } = req.body;
   const conn = await pool.getConnection();
@@ -244,7 +272,7 @@ app.post('/api/admin/next', reqLogin, reqAdmin, async (req, res) => {
     await conn.beginTransaction();
 
     await conn.execute(
-      `UPDATE queues SET status = 'skipped'
+      `UPDATE queues SET status = 'no_show'
        WHERE department_id = ? AND status = 'serving'`,
       [department_id]
     );
@@ -253,7 +281,7 @@ app.post('/api/admin/next', reqLogin, reqAdmin, async (req, res) => {
       `SELECT queue_id, code, full_name, category
        FROM queues
        WHERE department_id = ? AND status = 'waiting'
-       ORDER BY is_emergency DESC, is_priority DESC, created_at ASC
+       ORDER BY is_emergency DESC, is_priority DESC, created_at ASC, queue_id ASC
        LIMIT 1`,
       [department_id]
     );
@@ -264,7 +292,7 @@ app.post('/api/admin/next', reqLogin, reqAdmin, async (req, res) => {
     }
 
     await conn.execute(
-      `UPDATE queues SET status = 'serving' WHERE queue_id = ?`,
+      `UPDATE queues SET status = 'serving', called_at = NOW() WHERE queue_id = ?`,
       [next.queue_id]
     );
 
@@ -289,7 +317,6 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
   const conn = await pool.getConnection();
 
   try {
-    // console.log('running add queue');
     await conn.beginTransaction();
 
     const [categ] = await conn.execute(
@@ -305,8 +332,6 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
             ON DUPLICATE KEY UPDATE last_number = last_number + 1`,
       [categ.department_id]
     );
-
-
 
     const [counter] = await conn.execute(
       `SELECT last_number FROM daily_counters
@@ -367,14 +392,13 @@ app.get('/api/admin/status', reqLogin, async (req, res) => {
 
   let conn;
 
-
   try {
     conn = await pool.getConnection();
     const [rows] = await conn.execute(
       `SELECT queue_id, code, full_name, category, status, department_id
-   FROM queues
-   WHERE user_id = ? AND status IN ('waiting', 'serving')  -- remove user_id filter if admin sees all
-   ORDER BY created_at DESC LIMIT 1`,
+       FROM queues
+       WHERE user_id = ? AND status IN ('waiting', 'serving')
+       ORDER BY created_at DESC LIMIT 1`,
       [uid]
     );
 
@@ -387,6 +411,8 @@ app.get('/api/admin/status', reqLogin, async (req, res) => {
         category: rows.category,
         department_id: rows.department_id
       });
+    } else {
+      return res.json({ queued: false, department_id: null });
     }
 
   } catch (err) {
@@ -396,7 +422,7 @@ app.get('/api/admin/status', reqLogin, async (req, res) => {
   }
 });
 
-app.get('/api/admin/:department_id', async (req, res) => {
+app.get('/api/admin/:department_id', reqLogin, reqAdmin, async (req, res) => {
   const { department_id } = req.params;
 
   let conn;
@@ -405,17 +431,19 @@ app.get('/api/admin/:department_id', async (req, res) => {
     conn = await pool.getConnection();
 
     const rows = await conn.execute(
-      `SELECT code, department_id, full_name
+      `SELECT queue_id, code, department_id, full_name, category
             FROM queues
             WHERE department_id = ?
             AND status = 'waiting'
-            ORDER BY is_emergency DESC, 
+            ORDER BY is_emergency DESC,
                       is_priority DESC,
-                      created_at ASC`,
+                      created_at ASC,
+                      queue_id ASC`,
       [department_id]
     );
 
     res.json(rows);
+    console.log(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
 
@@ -437,9 +465,10 @@ app.get('/api/queue/:department_id', async (req, res) => {
             FROM queues
             WHERE department_id = ?
             AND status = 'waiting'
-            ORDER BY is_emergency DESC, 
+            ORDER BY is_emergency DESC,
                       is_priority DESC,
-                      created_at ASC`,
+                      created_at ASC,
+                      queue_id ASC`,
       [department_id]
     );
 

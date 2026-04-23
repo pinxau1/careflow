@@ -91,33 +91,25 @@ async function markServed() {
   render();
 }
 
-function skipTicket(queue_id, btn) {
-  btn.closest('li').remove();
+async function skipTicket(queue_id) {
+  await fetch(`/api/admin/skip/${queue_id}`, {
+    method: 'PATCH',
+    credentials: 'include'
+  });
+  showToast('Ticket skipped');
+  await refreshQueue();
+  render();
 }
 
-function deleteTicket(queue_id, btn) {
-  btn.closest('li').remove();
+async function deleteTicket(queue_id) {
+  await fetch(`/api/admin/delete/${queue_id}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+  showToast('Ticket deleted');
+  await refreshQueue();
+  render();
 }
-
-// async function skipTicket(queue_id) {
-//   await fetch(`/api/admin/skip/${queue_id}`, {
-//     method: 'PATCH',
-//     credentials: 'include'
-//   });
-//   showToast('Ticket skipped');
-//   await refreshQueue();
-//   render();
-// }
-//
-// async function deleteTicket(queue_id) {
-//   await fetch(`/api/admin/delete/${queue_id}`, {
-//     method: 'DELETE',
-//     credentials: 'include'
-//   });
-//   showToast('Ticket deleted');
-//   await refreshQueue();
-//   render();
-// }
 
 async function clearAll() {
   if (!confirm('Clear entire waiting queue?')) return;
@@ -210,8 +202,8 @@ async function renderQueue() {
         <div class="item-meta">Position ${i + 1}</div>
       </div>
       <span class="service-pill">${escHtml(entry.category ?? '')}</span>
-      <button class="btn-serve-now" onclick="skipTicket(${entry.queue_id}, this)">Skip</button>
-      <button class="btn-remove"   onclick="deleteTicket(${entry.queue_id}, this)">&#x2715;</button>
+      <button class="btn-serve-now" onclick="skipTicket(${entry.queue_id})">Skip</button>
+      <button class="btn-remove"   onclick="deleteTicket(${entry.queue_id})">&#x2715;</button>
     `;
     list.appendChild(li);
   });
