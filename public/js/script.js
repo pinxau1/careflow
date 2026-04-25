@@ -34,9 +34,9 @@ if (isDashboard) {
   ];
 
   const counters = [
-    { room:'Room 1', num:'042', doctor:'Dr. Ana Santos',  spec:'General Medicine',  avg:'8 min'  },
-    { room:'Room 2', num:'039', doctor:'Dr. Marco Ramos', spec:'Internal Medicine', avg:'11 min' },
-    { room:'Room 3', num:'041', doctor:'Dr. Liza Torres', spec:'General Practice',  avg:'7 min'  },
+    { room:'Room 1', num:'042', doctor:'Dr. Ana Santos',  spec:'General Medicine',  avg:'8 min', available:true  },
+    { room:'Room 2', num:'039', doctor:'Dr. Marco Ramos', spec:'Internal Medicine', avg:'11 min', available:true },
+    { room:'Room 3', num:'041', doctor:'Dr. Liza Torres', spec:'General Practice',  avg:'7 min', available:true  },
   ];
 
   let patients = [
@@ -53,6 +53,57 @@ if (isDashboard) {
   let activeDept    = 'genmed';
   let activeFilter  = 'all';
   let searchVal     = '';
+  let queueOpen = true;
+  let cutoffTime = '17:00';
+  // ===== NEW FEATURE START: Dashboard statistics state =====
+  // Holds per-department metrics fetched from SQL-backed API.
+  let dashboardStats = {
+    inQueue: 0,
+    waiting: 0,
+    servedToday: 0,
+    avgWaitMin: null
+  };
+  // ===== NEW FEATURE END: Dashboard statistics state =====
+
+  function getActiveDepartmentName() {
+    const dept = departments.find(d => d.id === activeDept);
+    return dept ? dept.name : '';
+  }
+
+  // ===== NEW FEATURE START: Fetch DB-backed dashboard statistics =====
+  async function fetchDepartmentStats() {
+    const departmentName = getActiveDepartmentName();
+    if (!departmentName) return;
+    const res = await fetch('/api/admin/dashboard/stats?department_name=' + encodeURIComponent(departmentName));
+    if (!res.ok) throw new Error('Failed to load department statistics');
+    const data = await res.json();
+    const stats = data.stats || {};
+    dashboardStats = {
+      inQueue: Number(stats.in_queue || 0),
+      waiting: Number(stats.waiting || 0),
+      servedToday: Number(stats.served_today || 0),
+      avgWaitMin: stats.avg_wait_min === null ? null : Number(stats.avg_wait_min)
+    };
+  }
+  // ===== NEW FEATURE END: Fetch DB-backed dashboard statistics =====
+
+  // ===== NEW FEATURE START: Render stat cards from DB data =====
+  function renderStats() {
+    const queueEl = document.getElementById('stat-queue');
+    const servedEl = document.getElementById('stat-served');
+    const waitingEl = document.getElementById('stat-waiting');
+    const waitEl = document.getElementById('stat-wait');
+    const servedSubEl = document.getElementById('stat-served-sub');
+    const waitSubEl = document.getElementById('stat-wait-sub');
+
+    if (queueEl) queueEl.textContent = String(dashboardStats.inQueue);
+    if (servedEl) servedEl.textContent = String(dashboardStats.servedToday);
+    if (waitingEl) waitingEl.textContent = String(dashboardStats.waiting);
+    if (waitEl) waitEl.textContent = dashboardStats.avgWaitMin === null ? 'N/A' : `~${Math.round(dashboardStats.avgWaitMin)} min`;
+    if (servedSubEl) servedSubEl.textContent = 'From completed queues today';
+    if (waitSubEl) waitSubEl.textContent = 'Average from called queues today';
+  }
+  // ===== NEW FEATURE END: Render stat cards from DB data =====
 
   // ─── DEPARTMENT GRID ───
   function renderDepts() {
@@ -99,13 +150,20 @@ if (isDashboard) {
     });
   }
 
-  function openDept(id, name) {
+  async function openDept(id, name) {
     activeDept = id;
     document.getElementById('active-dept-name').textContent = name;
     showPage('queue');
+    try {
+      await fetchDepartmentStats();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load dashboard stats');
+    }
     renderCounters();
     renderNextList();
     renderTable();
+    renderStats();
     switchTab('main', document.querySelector('.tab-btn'));
   }
 
@@ -127,6 +185,19 @@ if (isDashboard) {
         <div class="counter-doctor">${c.doctor}</div>
         <div class="counter-spec">${c.spec}</div>
         <div class="counter-avg">Avg ${c.avg}/patient</div>
+        <div class="counter-toggle-row" onclick="event.stopPropagation()">
+          <span class="counter-status ${c.available ? 'on' : 'off'}">${c.available ? 'Available' : 'On Break'}</span>
+          <label class="toggle mini ${!queueOpen ? 'disabled' : ''}">
+            <input
+              type="checkbox"
+              ${c.available ? 'checked' : ''}
+              ${!queueOpen ? 'disabled' : ''}
+              onchange="toggleDoctorAvailability(${i}, this.checked)"
+              onclick="event.stopPropagation()"
+            >
+            <span class="toggle-knob"></span>
+          </label>
+        </div>
       </div>
     `).join('');
   }
@@ -212,8 +283,59 @@ if (isDashboard) {
     patients = patients.filter(p => p.q !== q);
     renderTable();
     renderNextList();
+    fetchDepartmentStats().then(renderStats).catch(err => console.error(err));
     showToast('Patient #' + q + ' removed from queue');
   }
+
+  // ===== NEW FEATURE START: Queue controls + doctor availability =====
+  function formatTime(twentyFour) {
+    if (!twentyFour || !twentyFour.includes(':')) return 'Not set';
+    const [h, m] = twentyFour.split(':');
+    const hour = parseInt(h, 10);
+    const suffix = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return String(hour12).padStart(2, '0') + ':' + m + ' ' + suffix;
+  }
+
+  function renderQueueControls() {
+    const cutoffDisplay = document.getElementById('queue-cutoff-display');
+    const cutoffInput = document.getElementById('queue-cutoff-time');
+    const queueNotice = document.getElementById('queue-closed-notice');
+    const queueManagementContent = document.getElementById('queue-management-content');
+    if (cutoffDisplay) cutoffDisplay.textContent = 'Cutoff: ' + formatTime(cutoffTime);
+    if (cutoffInput) cutoffInput.value = cutoffTime;
+    if (queueNotice) queueNotice.classList.toggle('open', !queueOpen);
+    if (queueManagementContent) queueManagementContent.classList.toggle('queue-closed-dim', !queueOpen);
+  }
+
+  function toggleDoctorAvailability(counterIndex, available) {
+    if (typeof counters[counterIndex] === 'undefined') return;
+    counters[counterIndex].available = !!available;
+    renderCounters();
+    showToast(counters[counterIndex].doctor + (available ? ' is available' : ' is on break'));
+  }
+
+  function setCutoffTime(value) {
+    if (!value) return;
+    cutoffTime = value;
+    renderQueueControls();
+    showToast('Queue cutoff time set to ' + formatTime(cutoffTime));
+  }
+
+  function continueQueue() {
+    queueOpen = true;
+    renderCounters();
+    renderQueueControls();
+    showToast('Queue continues accepting patients');
+  }
+
+  function closeQueue() {
+    queueOpen = false;
+    renderCounters();
+    renderQueueControls();
+    showToast('Queue closed for new patients');
+  }
+  // ===== NEW FEATURE END: Queue controls + doctor availability =====
 
   // ─── AI PANEL ───
   function toggleAI() {
@@ -244,6 +366,7 @@ if (isDashboard) {
   }
 
   function addPatient() {
+    if (!queueOpen) { alert('Queue is currently closed. Please continue queue first.'); return; }
     const first = document.getElementById('f-first').value.trim();
     const last  = document.getElementById('f-last').value.trim();
     if (!first || !last) { alert('Please enter patient name.'); return; }
@@ -264,6 +387,7 @@ if (isDashboard) {
 
     renderTable();
     renderNextList();
+    fetchDepartmentStats().then(renderStats).catch(err => console.error(err));
     closeModal();
     ['f-first','f-last','f-age','f-notes'].forEach(id => {
       document.getElementById(id).value = '';
@@ -317,6 +441,10 @@ if (isDashboard) {
   window.skipQueue      = skipQueue;
   window.callPatient    = callPatient;
   window.deletePatient  = deletePatient;
+  window.toggleDoctorAvailability = toggleDoctorAvailability;
+  window.setCutoffTime  = setCutoffTime;
+  window.continueQueue  = continueQueue;
+  window.closeQueue     = closeQueue;
   window.toggleAI       = toggleAI;
   window.acceptAI       = acceptAI;
   window.openModal      = openModal;
@@ -330,6 +458,8 @@ if (isDashboard) {
   renderCounters();
   renderNextList();
   renderTable();
+  renderQueueControls();
+  fetchDepartmentStats().then(renderStats).catch(err => console.error(err));
 
 } // end isDashboard
 

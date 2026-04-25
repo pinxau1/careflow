@@ -424,6 +424,58 @@ input {
   }
   .tab-btn:hover { color: var(--text); }
   .tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
+
+  /* ===== NEW FEATURE START: Queue controls + queue closed state ===== */
+  .queue-control-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    margin-bottom: 16px;
+    align-items: stretch;
+  }
+  .queue-control-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 12px 14px;
+  }
+  .queue-control-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text3);
+    letter-spacing: 0.4px;
+    margin-bottom: 8px;
+  }
+  .queue-control-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .cutoff-body { justify-content: flex-start; gap: 12px; }
+  .cutoff-display { font-size: 12px; color: var(--text2); font-weight: 600; }
+  .queue-control-actions { display: flex; align-items: center; gap: 8px; }
+  .queue-control-spacer { min-width: 16px; }
+  .queue-control-btn { min-height: 46px; padding: 0 20px; }
+
+  .queue-closed-notice {
+    display: none;
+    margin-bottom: 14px;
+    border: 1px solid #f5c2c7;
+    background: #fff3f4;
+    color: #842029;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+  .queue-closed-notice.open { display: block; }
+  #queue-management-content { transition: opacity 0.2s ease; }
+  #queue-management-content.queue-closed-dim { opacity: 0.48; }
+  /* ===== NEW FEATURE END: Queue controls + queue closed state ===== */
  
   /* Counter cards */
   .counters-row {
@@ -448,6 +500,23 @@ input {
   .counter-doctor { font-size: 13px; font-weight: 600; color: var(--text); }
   .counter-spec { font-size: 12px; color: var(--text2); }
   .counter-avg { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .counter-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .counter-status {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .counter-status.on { color: var(--green-dark); }
+  .counter-status.off { color: var(--red); }
  
   /* Queue card section */
   .queue-main-row {
@@ -521,6 +590,7 @@ input {
   .next-pname { font-size: 13px; font-weight: 500; color: var(--text); }
   .next-psub { font-size: 12px; color: var(--text2); }
  
+  /* ===== NEW FEATURE START: DB-backed dashboard stat card styles ===== */
   /* Stats row */
   .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
   .stat-card {
@@ -533,6 +603,7 @@ input {
   .stat-sub { font-size: 12px; color: var(--text3); font-style: italic; margin-top: 6px; }
   .stat-sub.up { color: #16a34a; }
   .stat-sub.dn { color: var(--red); }
+  /* ===== NEW FEATURE END: DB-backed dashboard stat card styles ===== */
  
   /* ── QUEUE LINE TAB ── */
   .queue-line-header {

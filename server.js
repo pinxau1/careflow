@@ -452,6 +452,78 @@ app.get('/api/admin/:department_id', reqLogin, reqAdmin, async (req, res) => {
   }
 });
 
+// ===== NEW FEATURE START: DB-backed dashboard statistics endpoint =====
+// Returns queue metrics per department for the admin dashboard stat cards.
+app.get('/api/admin/dashboard/stats', reqLogin, reqAdmin, async (req, res) => {
+  const { department_name } = req.query;
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    let departmentId = null;
+    if (department_name) {
+      const [dept] = await conn.execute(
+        `SELECT department_id FROM departments WHERE name = ? LIMIT 1`,
+        [department_name]
+      );
+      if (dept) departmentId = dept.department_id;
+    }
+
+    if (!departmentId) {
+      return res.json({
+        success: true,
+        stats: { in_queue: 0, waiting: 0, served_today: 0, avg_wait_min: null }
+      });
+    }
+
+    const [inQueue] = await conn.execute(
+      `SELECT COUNT(*) AS count
+       FROM queues
+       WHERE department_id = ? AND status IN ('waiting', 'serving')`,
+      [departmentId]
+    );
+
+    const [waiting] = await conn.execute(
+      `SELECT COUNT(*) AS count
+       FROM queues
+       WHERE department_id = ? AND status = 'waiting'`,
+      [departmentId]
+    );
+
+    const [servedToday] = await conn.execute(
+      `SELECT COUNT(*) AS count
+       FROM queues
+       WHERE department_id = ? AND status = 'done' AND DATE(finished_at) = CURDATE()`,
+      [departmentId]
+    );
+
+    const [avgWait] = await conn.execute(
+      `SELECT AVG(TIMESTAMPDIFF(MINUTE, created_at, called_at)) AS avg_wait_min
+       FROM queues
+       WHERE department_id = ?
+         AND called_at IS NOT NULL
+         AND DATE(created_at) = CURDATE()`,
+      [departmentId]
+    );
+
+    return res.json({
+      success: true,
+      stats: {
+        in_queue: Number(inQueue.count || 0),
+        waiting: Number(waiting.count || 0),
+        served_today: Number(servedToday.count || 0),
+        avg_wait_min: avgWait.avg_wait_min !== null ? Number(avgWait.avg_wait_min) : null
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+// ===== NEW FEATURE END: DB-backed dashboard statistics endpoint =====
+
 app.get('/api/queue/:department_id', async (req, res) => {
   const { department_id } = req.params;
 

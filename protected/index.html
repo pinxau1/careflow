@@ -145,6 +145,28 @@
     
         <!-- TAB 1 - MAIN -->
         <div class="tab-content active" id="tab-main">
+        <!-- ===== NEW FEATURE START: Queue management controls ===== -->
+        <div class="queue-control-row">
+        <div class="queue-control-card">
+            <div class="queue-control-label">Queue Cutoff Time</div>
+            <div class="queue-control-body cutoff-body">
+            <input type="time" id="queue-cutoff-time" class="settings-input" value="17:00" onchange="setCutoffTime(this.value)">
+            <span id="queue-cutoff-display" class="cutoff-display">Cutoff: 05:00 PM</span>
+            </div>
+        </div>
+        <div class="queue-control-spacer"></div>
+        <div class="queue-control-card queue-control-actions">
+            <button class="btn-recall queue-control-btn" onclick="continueQueue()">Continue Queue</button>
+            <button class="btn-skip queue-control-btn" onclick="closeQueue()">Close Queue</button>
+        </div>
+        </div>
+
+        <div class="queue-closed-notice" id="queue-closed-notice">
+        <strong>Queue is closed.</strong> New patients cannot be added until the queue is continued.
+        </div>
+
+        <div id="queue-management-content">
+        <!-- ===== NEW FEATURE END: Queue management controls ===== -->
         <!-- Counter cards -->
         <div class="counters-row" id="counters-row"></div>
     
@@ -180,6 +202,7 @@
             </div>
         </div>
     
+        <!-- ===== NEW FEATURE START: DB-backed dashboard stat cards ===== -->
         <!-- Stats -->
         <div class="stats-row">
             <div class="stat-card">
@@ -232,6 +255,8 @@
                 <div class="stat-value" id="stat-wait">~23 min</div>
                 <div class="stat-sub dn" id="stat-wait-sub">↑ +8% from yesterday</div>
             </div>
+        </div>
+        <!-- ===== NEW FEATURE END: DB-backed dashboard stat cards ===== -->
         </div>
         </div>
 
