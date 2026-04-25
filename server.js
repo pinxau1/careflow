@@ -25,14 +25,15 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
-
+console.log(process.env.DB_HOST);
 
 const pool = mariadb.createPool({
   host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
+  port: Number(process.env.DB_PORT),
+  user: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  connectionLimit: 10
 });
 
 console.log("this is the right file. ");
@@ -459,7 +460,6 @@ app.get('/api/queue/:department_id', async (req, res) => {
 
   try {
     conn = await pool.getConnection();
-
     const rows = await conn.execute(
       `SELECT code
             FROM queues
@@ -502,4 +502,6 @@ app.get('/queue', reqLogin, (req, res) => {
   res.sendFile(path.join(__dirname, 'protected/user.html'));
 });
 
-app.listen(3000, () => console.log('Running at http://localhost:3000'));
+// app.listen(3000, () => console.log('Running at http://localhost:3000'));
+const port = 20197;
+app.listen(port);
