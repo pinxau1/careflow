@@ -332,6 +332,19 @@ if (isDashboard) {
   renderNextList();
   renderTable();
 
+
+  const lgt = document.getElementById('logoutBtn');
+
+
+  lgt.addEventListener('click', async e => {
+    e.preventDefault();
+    try {
+      await fetch('/logout', { method: 'POST', credentials: 'include' });
+      window.location.href = '/login';
+    } catch (err) {
+      console.error('Logout failed', err);
+    }
+  });
 } // end isDashboard
 
 
@@ -667,3 +680,5 @@ if (patientEl) {
   }
 
 } // end patientFlow
+
+
