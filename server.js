@@ -38,7 +38,8 @@ const pool = mariadb.createPool({
 console.log("this is the right file. ");
 function reqLogin(req, res, next) {
   if (!req.session || !req.session.uid) {
-    return res.redirect('/login.html');
+    return res.redirect('/login');
+    // return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
 }
@@ -484,9 +485,9 @@ app.get('/api/queue/:department_id', async (req, res) => {
 app.use(express.static('public'));
 
 app.get('/', reqLogin, reqAdmin, (req, res) => {
-  res.sendFile(path.join(__dirname, 'protected/index.html'));
+  res.sendFile(path.join(__dirname, '/protected/index.html'));
 });
-app.get('/login.html', (req, res) => {
+app.get('/login', (req, res) => {
   res.sendFile(__dirname + '/public/login.html');
 });
 
@@ -499,7 +500,7 @@ app.get('/signup.html', (req, res) => {
 });
 
 app.get('/queue', reqLogin, (req, res) => {
-  res.sendFile(path.join(__dirname, 'protected/user.html'));
+  res.sendFile(path.join(__dirname, '/protected/user.html'));
 });
 
 app.listen(3000, () => console.log('Running at http://localhost:3000'));
