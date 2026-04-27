@@ -5,9 +5,10 @@
 // ─────────────────────────────────────────────
 
 // ─── GUARD: only run dashboard logic on the admin page ───
-const indexFlow  = document.getElementById('indexFlow');
-const patientEl  = document.getElementById('patientFlow');
-const mockAdmin  = document.getElementById('mockFlow');
+const indexFlow = document.getElementById('indexFlow');
+const patientEl = document.getElementById('patientFlow');
+const mockAdmin = document.getElementById('mockFlow');
+
 
 // ════════════════════════════════════════════════════════
 //  ADMIN DASHBOARD  (new CareFlow UI — index.html)
@@ -23,55 +24,55 @@ if (isDashboard) {
   // The shape is kept identical to the original so your
   // backend calls can replace these arrays directly.
   const departments = [
-    { id:'genmed',    name:'Gen Med / Internal Medicine', type:'patient-care', queue:18, color:'#e8f7f2', emoji:'🏥' },
-    { id:'birthing',  name:'Birthing / OB-GYN',           type:'patient-care', queue:7,  color:'#fef3f2', emoji:'🤱' },
-    { id:'geriatrics',name:'Geriatrics',                  type:'patient-care', queue:12, color:'#eff6ff', emoji:'🧓' },
-    { id:'radiology', name:'Radiology',                   type:'laboratory',   queue:5,  color:'#fefce8', emoji:'🔬' },
-    { id:'pathology', name:'Clinical Pathology',          type:'laboratory',   queue:0,  color:'#f0fdf4', emoji:'🧪' },
-    { id:'pharmacy',  name:'Pharmacy',                    type:'support',      queue:3,  color:'#faf5ff', emoji:'💊' },
-    { id:'cardiology',name:'Cardiology',                  type:'patient-care', queue:14, color:'#fff1f2', emoji:'❤️' },
-    { id:'neurology', name:'Neurology',                   type:'patient-care', queue:6,  color:'#f0f4ff', emoji:'🧠' },
+    { id: 'genmed', name: 'Gen Med / Internal Medicine', type: 'patient-care', queue: 18, color: '#e8f7f2', emoji: '🏥' },
+    { id: 'birthing', name: 'Birthing / OB-GYN', type: 'patient-care', queue: 7, color: '#fef3f2', emoji: '🤱' },
+    { id: 'geriatrics', name: 'Geriatrics', type: 'patient-care', queue: 12, color: '#eff6ff', emoji: '🧓' },
+    { id: 'radiology', name: 'Radiology', type: 'laboratory', queue: 5, color: '#fefce8', emoji: '🔬' },
+    { id: 'pathology', name: 'Clinical Pathology', type: 'laboratory', queue: 0, color: '#f0fdf4', emoji: '🧪' },
+    { id: 'pharmacy', name: 'Pharmacy', type: 'support', queue: 3, color: '#faf5ff', emoji: '💊' },
+    { id: 'cardiology', name: 'Cardiology', type: 'patient-care', queue: 14, color: '#fff1f2', emoji: '❤️' },
+    { id: 'neurology', name: 'Neurology', type: 'patient-care', queue: 6, color: '#f0f4ff', emoji: '🧠' },
   ];
 
   const counters = [
-    { room:'Room 1', num:'042', doctor:'Dr. Ana Santos',  spec:'General Medicine',  avg:'8 min'  },
-    { room:'Room 2', num:'039', doctor:'Dr. Marco Ramos', spec:'Internal Medicine', avg:'11 min' },
-    { room:'Room 3', num:'041', doctor:'Dr. Liza Torres', spec:'General Practice',  avg:'7 min'  },
+    { room: 'Room 1', num: '042', doctor: 'Dr. Ana Santos', spec: 'General Medicine', avg: '8 min' },
+    { room: 'Room 2', num: '039', doctor: 'Dr. Marco Ramos', spec: 'Internal Medicine', avg: '11 min' },
+    { room: 'Room 3', num: '041', doctor: 'Dr. Liza Torres', spec: 'General Practice', avg: '7 min' },
   ];
 
   let patients = [
-    { q:'042', name:'Imong Nawng',   gender:'F', age:72, priority:'high',   status:'serving', counter:'Room 1 — Dr. Santos', wait:'Serving now' },
-    { q:'043', name:'Imong Mama',    gender:'M', age:58, priority:'medium', status:'waiting', counter:'Room 1 — Dr. Santos', wait:'~8 min'      },
-    { q:'044', name:'Imong Tae',     gender:'F', age:41, priority:'low',    status:'waiting', counter:'Room 2 — Dr. Ramos', wait:'~14 min'     },
-    { q:'039', name:'Imong Betlog',  gender:'M', age:67, priority:'medium', status:'waiting', counter:'Room 3 — Dr. Torres',wait:'~19 min'     },
-    { q:'045', name:'Rain',          gender:'F', age:34, priority:'low',    status:'waiting', counter:'Room 2 — Dr. Ramos', wait:'~22 min'     },
-    { q:'046', name:'SK Girl',       gender:'M', age:80, priority:'high',   status:'waiting', counter:'Room 1 — Dr. Santos', wait:'~27 min'    },
-    { q:'047', name:'Shaken',        gender:'F', age:65, priority:'high',   status:'waiting', counter:'Room 3 — Dr. Torres',wait:'~31 min'     },
-    { q:'048', name:'AJ Nicole',     gender:'M', age:52, priority:'low',    status:'waiting', counter:'Room 2 — Dr. Ramos', wait:'~36 min'     },
+    { q: '042', name: 'Imong Nawng', gender: 'F', age: 72, priority: 'high', status: 'serving', counter: 'Room 1 — Dr. Santos', wait: 'Serving now' },
+    { q: '043', name: 'Imong Mama', gender: 'M', age: 58, priority: 'medium', status: 'waiting', counter: 'Room 1 — Dr. Santos', wait: '~8 min' },
+    { q: '044', name: 'Imong Tae', gender: 'F', age: 41, priority: 'low', status: 'waiting', counter: 'Room 2 — Dr. Ramos', wait: '~14 min' },
+    { q: '039', name: 'Imong Betlog', gender: 'M', age: 67, priority: 'medium', status: 'waiting', counter: 'Room 3 — Dr. Torres', wait: '~19 min' },
+    { q: '045', name: 'Rain', gender: 'F', age: 34, priority: 'low', status: 'waiting', counter: 'Room 2 — Dr. Ramos', wait: '~22 min' },
+    { q: '046', name: 'SK Girl', gender: 'M', age: 80, priority: 'high', status: 'waiting', counter: 'Room 1 — Dr. Santos', wait: '~27 min' },
+    { q: '047', name: 'Shaken', gender: 'F', age: 65, priority: 'high', status: 'waiting', counter: 'Room 3 — Dr. Torres', wait: '~31 min' },
+    { q: '048', name: 'AJ Nicole', gender: 'M', age: 52, priority: 'low', status: 'waiting', counter: 'Room 2 — Dr. Ramos', wait: '~36 min' },
   ];
 
-  let activeDept    = 'genmed';
-  let activeFilter  = 'all';
-  let searchVal     = '';
+  let activeDept = 'genmed';
+  let activeFilter = 'all';
+  let searchVal = '';
 
   // ─── DEPARTMENT GRID ───
   function renderDepts() {
-    const grid     = document.getElementById('dept-grid');
+    const grid = document.getElementById('dept-grid');
     const filtered = departments.filter(d => {
-      const matchType   = activeFilter === 'all' || d.type === activeFilter;
+      const matchType = activeFilter === 'all' || d.type === activeFilter;
       const matchSearch = d.name.toLowerCase().includes(searchVal.toLowerCase());
       return matchType && matchSearch;
     });
 
     grid.innerHTML = filtered.map(d => `
-      <div class="dept-card" onclick="openDept('${d.id}','${d.name.replace(/'/g,"\\'")}')">
+      <div class="dept-card" onclick="openDept('${d.id}','${d.name.replace(/'/g, "\\'")}')">
         <div class="dept-img" style="background:${d.color}">
           <div class="dept-img-bg">${d.emoji}</div>
         </div>
         <div class="dept-info">
           <div class="dept-name">${d.name}</div>
           <div class="dept-meta">
-            <span class="dept-type ${d.type === 'laboratory' ? 'lab' : d.type === 'support' ? 'support' : ''}">${d.type.replace('-',' ')}</span>
+            <span class="dept-type ${d.type === 'laboratory' ? 'lab' : d.type === 'support' ? 'support' : ''}">${d.type.replace('-', ' ')}</span>
             <span class="dept-queue">Queue: <span>${d.queue ?? 0}</span></span>
           </div>
         </div>
@@ -94,8 +95,8 @@ if (isDashboard) {
     document.getElementById('page-' + p).classList.add('active');
     document.querySelectorAll('.side-btn').forEach((b, i) => {
       b.classList.remove('active');
-      if ((p === 'dept'  && i === 0) ||
-          (p === 'queue' && i === 1)) b.classList.add('active');
+      if ((p === 'dept' && i === 0) ||
+        (p === 'queue' && i === 1)) b.classList.add('active');
     });
   }
 
@@ -198,15 +199,15 @@ if (isDashboard) {
     const p = patients.find(p => parseInt(p.q) === qNum);
     if (p) {
       document.getElementById('q-name').textContent = p.name;
-      document.getElementById('q-sub').textContent  = p.gender + ' · ' + p.age + ' years';
+      document.getElementById('q-sub').textContent = p.gender + ' · ' + p.age + ' years';
       const pc = document.getElementById('q-priority');
-      pc.className   = 'priority-chip ' + p.priority;
+      pc.className = 'priority-chip ' + p.priority;
       pc.textContent = p.priority.charAt(0).toUpperCase() + p.priority.slice(1);
     }
     showToast('Skipped to Queue #0' + qNum);
   }
 
-  function callPatient(q)   { showToast('Calling Queue #' + q + '…'); }
+  function callPatient(q) { showToast('Calling Queue #' + q + '…'); }
 
   function deletePatient(q) {
     patients = patients.filter(p => p.q !== q);
@@ -236,7 +237,7 @@ if (isDashboard) {
   }
 
   // ─── ADD PATIENT MODAL ───
-  function openModal()  { document.getElementById('modal-overlay').classList.add('open'); }
+  function openModal() { document.getElementById('modal-overlay').classList.add('open'); }
   function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
 
   function closeModalOuter(e) {
@@ -245,15 +246,15 @@ if (isDashboard) {
 
   function addPatient() {
     const first = document.getElementById('f-first').value.trim();
-    const last  = document.getElementById('f-last').value.trim();
+    const last = document.getElementById('f-last').value.trim();
     if (!first || !last) { alert('Please enter patient name.'); return; }
 
-    const gender   = document.getElementById('f-gender').value;
-    const age      = document.getElementById('f-age').value || '—';
+    const gender = document.getElementById('f-gender').value;
+    const age = document.getElementById('f-age').value || '—';
     const priority = document.getElementById('f-priority').value;
-    const counter  = document.getElementById('f-counter').value;
-    const maxQ     = Math.max(...patients.map(p => parseInt(p.q)));
-    const newQ     = String(maxQ + 1).padStart(3, '0');
+    const counter = document.getElementById('f-counter').value;
+    const maxQ = Math.max(...patients.map(p => parseInt(p.q)));
+    const newQ = String(maxQ + 1).padStart(3, '0');
 
     patients.push({
       q: newQ, name: first + ' ' + last,
@@ -265,7 +266,7 @@ if (isDashboard) {
     renderTable();
     renderNextList();
     closeModal();
-    ['f-first','f-last','f-age','f-notes'].forEach(id => {
+    ['f-first', 'f-last', 'f-age', 'f-notes'].forEach(id => {
       document.getElementById(id).value = '';
     });
     showToast('Patient ' + first + ' ' + last + ' added as Queue #' + newQ);
@@ -290,40 +291,40 @@ if (isDashboard) {
       t = document.createElement('div');
       t.id = 'toast';
       t.style.cssText = [
-        'position:fixed','bottom:100px','left:50%',
+        'position:fixed', 'bottom:100px', 'left:50%',
         'transform:translateX(-50%)',
-        'background:#111','color:#fff',
-        'padding:10px 20px','border-radius:8px',
-        'font-size:13px','font-weight:500',
-        'z-index:999','opacity:0','transition:opacity 0.2s',
-        'white-space:nowrap','box-shadow:0 4px 16px rgba(0,0,0,0.3)'
+        'background:#111', 'color:#fff',
+        'padding:10px 20px', 'border-radius:8px',
+        'font-size:13px', 'font-weight:500',
+        'z-index:999', 'opacity:0', 'transition:opacity 0.2s',
+        'white-space:nowrap', 'box-shadow:0 4px 16px rgba(0,0,0,0.3)'
       ].join(';');
       document.body.appendChild(t);
     }
-    t.textContent  = msg;
+    t.textContent = msg;
     t.style.opacity = '1';
     clearTimeout(t._timeout);
     t._timeout = setTimeout(() => t.style.opacity = '0', 2800);
   }
 
   // ─── EXPOSE GLOBALS (called from inline HTML onclick attributes) ───
-  window.filterDepts    = filterDepts;
-  window.setFilter      = setFilter;
-  window.showPage       = showPage;
-  window.openDept       = openDept;
-  window.switchTab      = switchTab;
-  window.selectCounter  = selectCounter;
-  window.recallQueue    = recallQueue;
-  window.skipQueue      = skipQueue;
-  window.callPatient    = callPatient;
-  window.deletePatient  = deletePatient;
-  window.toggleAI       = toggleAI;
-  window.acceptAI       = acceptAI;
-  window.openModal      = openModal;
-  window.closeModal     = closeModal;
-  window.closeModalOuter= closeModalOuter;
-  window.addPatient     = addPatient;
-  window.toggleNotif    = toggleNotif;
+  window.filterDepts = filterDepts;
+  window.setFilter = setFilter;
+  window.showPage = showPage;
+  window.openDept = openDept;
+  window.switchTab = switchTab;
+  window.selectCounter = selectCounter;
+  window.recallQueue = recallQueue;
+  window.skipQueue = skipQueue;
+  window.callPatient = callPatient;
+  window.deletePatient = deletePatient;
+  window.toggleAI = toggleAI;
+  window.acceptAI = acceptAI;
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+  window.closeModalOuter = closeModalOuter;
+  window.addPatient = addPatient;
+  window.toggleNotif = toggleNotif;
 
   // ─── INIT ───
   renderDepts();
@@ -367,8 +368,8 @@ if (indexFlow) {
   }
 
   $('#btn-add-patient-open').onclick = () => openModal('modal-add-patient');
-  $('#btn-quick-add-open').onclick   = () => openModal('modal-quick-add');
-  $('#btn-emergency-open').onclick   = () => openModal('modal-emergency');
+  $('#btn-quick-add-open').onclick = () => openModal('modal-quick-add');
+  $('#btn-emergency-open').onclick = () => openModal('modal-emergency');
 
   $$('.modal-close, [data-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn.dataset.modal));
@@ -387,7 +388,7 @@ if (indexFlow) {
       btn.classList.add('active-cat');
       selectedCategory = btn.dataset.prefix;
       $('#preview-code').textContent = selectedCategory + '001';
-      $('#preview-sub').textContent  = 'Next available code';
+      $('#preview-sub').textContent = 'Next available code';
     };
   });
 
@@ -494,7 +495,7 @@ if (mockAdmin) {
   const logout = document.getElementById('btn-logout');
 
   window.addEventListener('DOMContentLoaded', async () => {
-    const res  = await fetch('/api/admin/status');
+    const res = await fetch('/api/admin/status');
     const data = await res.json();
     if (data.queued) {
       departmentId = data.department_id;
@@ -530,13 +531,13 @@ if (mockAdmin) {
 
   async function loadQueue(departmentId) {
     if (!departmentId) return;
-    const res  = await fetch(`/api/admin/${departmentId}`);
+    const res = await fetch(`/api/admin/${departmentId}`);
     const data = await res.json();
     if (!res.ok) return;
     renderQueueList(data);
   }
 
-  let adminPoller   = null;
+  let adminPoller = null;
   let departmentId;
 
   function startPolling() {
@@ -555,11 +556,11 @@ if (mockAdmin) {
 if (patientEl) {
 
   let departmentId;
-  const addQueueForm      = document.getElementById('add-queue-form');
-  const completeFormPrompt= document.getElementById('completeFormLabel');
-  const nowTicket         = document.getElementById('now-ticket');
-  const nowName           = document.getElementById('now-name');
-  const aheadStatus       = document.getElementById('stat-in-queue');
+  const addQueueForm = document.getElementById('add-queue-form');
+  const completeFormPrompt = document.getElementById('completeFormLabel');
+  const nowTicket = document.getElementById('now-ticket');
+  const nowName = document.getElementById('now-name');
+  const aheadStatus = document.getElementById('stat-in-queue');
 
   function showToast(msg) {
     const toast = document.getElementById('toast');
@@ -570,7 +571,7 @@ if (patientEl) {
   }
 
   window.addEventListener('DOMContentLoaded', async () => {
-    const res  = await fetch('/api/queue/status');
+    const res = await fetch('/api/queue/status');
     const data = await res.json();
     if (data.queued) {
       departmentId = data.department_id;
@@ -586,10 +587,10 @@ if (patientEl) {
       e.preventDefault();
       const patientName = addQueueForm.name.value;
       const serviceType = addQueueForm.serviceType.value;
-      const concern     = addQueueForm.concern.value;
+      const concern = addQueueForm.concern.value;
 
       try {
-        const res  = await fetch('/api/queue/create', {
+        const res = await fetch('/api/queue/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ patientName, serviceType, concern })
@@ -615,8 +616,8 @@ if (patientEl) {
   function showQueueState(code, ahead) {
     completeFormPrompt.classList.add('hidden');
     addQueueForm.classList.add('hidden');
-    nowTicket.textContent  = code;
-    nowName.textContent    = 'Joined';
+    nowTicket.textContent = code;
+    nowName.textContent = 'Joined';
     aheadStatus.textContent = ahead;
   }
 
@@ -637,7 +638,7 @@ if (patientEl) {
 
   async function loadQueue(deptId) {
     if (!deptId) return;
-    const res  = await fetch(`/api/queue/${deptId}`);
+    const res = await fetch(`/api/queue/${deptId}`);
     const data = await res.json();
     if (!res.ok) return;
     renderQueueList(data);
