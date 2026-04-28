@@ -1442,39 +1442,179 @@ if (mockAdmin) {
 }
 
 
-
 if (patientEl) {
+  let departmentId = null;
+  let patientPoller = null;
+  let isSubmittingQueue = false;
+  let isQueueOpen = true;
 
-  let departmentId;
   const addQueueForm = document.getElementById('add-queue-form');
   const completeFormPrompt = document.getElementById('completeFormLabel');
   const nowTicket = document.getElementById('now-ticket');
   const nowName = document.getElementById('now-name');
+  const nowService = document.getElementById('now-service');
   const aheadStatus = document.getElementById('stat-in-queue');
+  const estWait = document.getElementById('stat-est-wait');
+  const statusBadge = document.getElementById('clinic-status-badge');
+  const statusDot = document.getElementById('clinic-status-dot');
+  const statusText = document.getElementById('clinic-status-text');
+  const submitBtn = addQueueForm ? addQueueForm.querySelector('button[type="submit"]') : null;
 
   function showToast(msg) {
     const toast = document.getElementById('toast');
+    if (!toast) return;
+
     toast.textContent = msg;
     toast.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(() => toast.classList.remove('show'), 2400);
   }
 
-  window.addEventListener('DOMContentLoaded', async () => {
+  function setQueueOpenUI(open, status = 'open') {
+    isQueueOpen = open;
+
+    if (statusText) {
+      statusText.textContent = open ? 'Open' : status === 'pause' ? 'Paused' : 'Closed';
+    }
+
+    if (statusDot) {
+      statusDot.style.background = open ? 'var(--green)' : 'var(--red)';
+    }
+
+    if (statusBadge) {
+      statusBadge.classList.toggle('closed', !open);
+    }
+
+    if (submitBtn && !addQueueForm.classList.contains('hidden')) {
+      submitBtn.disabled = !open;
+      submitBtn.textContent = open ? 'Add' : 'Queue Closed';
+    }
+
+    if (completeFormPrompt && !open && !addQueueForm.classList.contains('hidden')) {
+      completeFormPrompt.textContent = 'Queue is currently closed';
+    }
+
+    if (completeFormPrompt && open && !addQueueForm.classList.contains('hidden')) {
+      completeFormPrompt.textContent = 'Complete the form to join';
+    }
+  }
+
+  function showQueueState(code, ahead, patientName = 'Joined', departmentName = '') {
+    if (completeFormPrompt) {
+      completeFormPrompt.classList.add('hidden');
+    }
+
+    if (addQueueForm) {
+      addQueueForm.classList.add('hidden');
+    }
+
+    if (nowTicket) {
+      nowTicket.textContent = code || '---';
+      nowTicket.classList.remove('empty');
+    }
+
+    if (nowName) {
+      nowName.textContent = patientName || 'Joined';
+      nowName.style.opacity = '1';
+    }
+
+    if (nowService) {
+      nowService.textContent = departmentName || '';
+    }
+
+    if (aheadStatus) {
+      aheadStatus.textContent = Number(ahead || 0);
+    }
+
+    if (estWait) {
+      estWait.textContent = `${Number(ahead || 0) * 5}m`;
+    }
+  }
+
+  function showJoinForm() {
+    if (completeFormPrompt) {
+      completeFormPrompt.classList.remove('hidden');
+      completeFormPrompt.textContent = isQueueOpen ? 'Complete the form to join' : 'Queue is currently closed';
+    }
+
+    if (addQueueForm) {
+      addQueueForm.classList.remove('hidden');
+    }
+
+    if (nowTicket) {
+      nowTicket.textContent = '---';
+      nowTicket.classList.add('empty');
+    }
+
+    if (nowName) {
+      nowName.textContent = 'Not yet joined';
+      nowName.style.opacity = '0.3';
+    }
+
+    if (nowService) {
+      nowService.textContent = '';
+    }
+
+    if (aheadStatus) {
+      aheadStatus.textContent = '0';
+    }
+
+    if (estWait) {
+      estWait.textContent = '0m';
+    }
+
+    setQueueOpenUI(isQueueOpen);
+  }
+
+  async function refreshPatientStatus() {
     const res = await fetch('/api/queue/status');
     const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to load queue status');
+    }
+
+    setQueueOpenUI(data.queue_open, data.queue_status);
+
     if (data.queued) {
       departmentId = data.department_id;
-      showQueueState(data.code, data.ahead, patientName, serviceType);
+
+      showQueueState(
+        data.code,
+        data.ahead,
+        data.full_name,
+        data.department_name
+      );
+
       startPolling();
     } else {
+      departmentId = null;
+      showJoinForm();
       attachForm();
     }
-  });
+  }
 
   function attachForm() {
+    if (!addQueueForm || addQueueForm.dataset.bound === '1') return;
+
+    addQueueForm.dataset.bound = '1';
+
     addQueueForm.addEventListener('submit', async e => {
       e.preventDefault();
+
+      if (isSubmittingQueue) return;
+
+      if (!isQueueOpen) {
+        showToast('Queue is currently closed');
+        return;
+      }
+
+      isSubmittingQueue = true;
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Adding...';
+      }
 
       const patientName = addQueueForm.name.value.trim();
       const serviceType = addQueueForm.serviceType.value;
@@ -1483,6 +1623,14 @@ if (patientEl) {
 
       if (!patientName || !serviceType || !concern) {
         showToast('Please complete the form');
+
+        isSubmittingQueue = false;
+
+        if (submitBtn) {
+          submitBtn.disabled = !isQueueOpen;
+          submitBtn.textContent = isQueueOpen ? 'Add' : 'Queue Closed';
+        }
+
         return;
       }
 
@@ -1501,49 +1649,63 @@ if (patientEl) {
 
         const data = await res.json();
 
+        if (res.status === 409) {
+          showToast(data.error || 'You already have an active queue');
+          await refreshPatientStatus();
+          return;
+        }
+
+        if (res.status === 403) {
+          showToast(data.error || 'Queue is currently closed');
+          await refreshPatientStatus();
+          return;
+        }
+
         if (!res.ok || !data.success) {
           showToast(data.error || 'Failed to join queue');
           return;
         }
 
-        showToast(`Queued: ${data.code}`);
-        showQueueState(data.code, data.ahead, patientName, serviceType);
-        departmentId = data.department_id;
-        startPolling();
+        showToast('Queued: ' + data.code);
 
+        departmentId = data.department_id;
+
+        showQueueState(
+          data.code,
+          data.ahead,
+          patientName,
+          serviceType
+        );
+
+        startPolling();
       } catch (err) {
         console.error(err);
         showToast('Server error');
+
+        isSubmittingQueue = false;
+
+        if (submitBtn) {
+          submitBtn.disabled = !isQueueOpen;
+          submitBtn.textContent = isQueueOpen ? 'Add' : 'Queue Closed';
+        }
       }
     });
   }
 
-  function showQueueState(code, ahead, patientName = 'Joined', serviceType = '') {
-    completeFormPrompt.classList.add('hidden');
-    addQueueForm.classList.add('hidden');
-
-    nowTicket.textContent = code;
-    nowTicket.classList.remove('empty');
-
-    nowName.textContent = patientName;
-    nowName.style.opacity = '1';
-
-    const nowService = document.getElementById('now-service');
-    if (nowService) nowService.textContent = serviceType;
-
-    aheadStatus.textContent = ahead;
-  }
-
   function renderQueueList(data) {
     const list = document.getElementById('queue-list');
+    if (!list) return;
+
     list.innerHTML = '';
-    if (data.length === 0) {
+
+    if (!data.length) {
       list.innerHTML = '<li class="empty-state">No patients waiting</li>';
       return;
     }
+
     data.forEach(q => {
       const li = document.createElement('li');
-      li.textContent = `${q.code}`;
+      li.textContent = q.full_name ? `${q.code} - ${q.full_name}` : q.code;
       li.classList.add('queue-item');
       list.appendChild(li);
     });
@@ -1551,27 +1713,49 @@ if (patientEl) {
 
   async function loadQueue(deptId) {
     if (!deptId) return;
+
     const res = await fetch(`/api/queue/${deptId}`);
     const data = await res.json();
+
     if (!res.ok) return;
+
     renderQueueList(data);
   }
 
-  let patientPoller = null;
-
   function startPolling() {
     if (!departmentId) return;
+
     loadQueue(departmentId);
-    if (patientPoller) clearInterval(patientPoller);
-    patientPoller = setInterval(() => loadQueue(departmentId), 3000);
+
+    if (patientPoller) {
+      clearInterval(patientPoller);
+    }
+
+    patientPoller = setInterval(async () => {
+      try {
+        await refreshPatientStatus();
+
+        if (departmentId) {
+          await loadQueue(departmentId);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }, 5000);
   }
 
   const logoutBtn = document.getElementById('btn-logout');
+
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async e => {
       e.preventDefault();
+
       try {
-        await fetch('/logout', { method: 'POST', credentials: 'include' });
+        await fetch('/logout', {
+          method: 'POST',
+          credentials: 'include'
+        });
+
         window.location.href = '/login';
       } catch (err) {
         console.error('Logout failed', err);
@@ -1579,4 +1763,13 @@ if (patientEl) {
     });
   }
 
-} 
+  window.addEventListener('DOMContentLoaded', async () => {
+    try {
+      await refreshPatientStatus();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load queue status');
+      attachForm();
+    }
+  });
+}

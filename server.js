@@ -388,7 +388,6 @@ app.get('/api/me', reqLogin, async (req, res) => {
 });
 
 app.get('/api/queue/status', reqLogin, async (req, res) => {
-  console.log('reached');
   const uid = req.session.uid;
 
   let conn;
@@ -396,36 +395,72 @@ app.get('/api/queue/status', reqLogin, async (req, res) => {
   try {
     conn = await pool.getConnection();
 
-    const [rows] = await conn.execute(
-      `SELECT q.code,
-            (
-              SELECT COUNT(*) FROM queues 
-              WHERE created_at < q.created_at
-              AND status = 'waiting' 
-              AND department_id = q.department_id
-            ) AS ahead, department_id 
-            FROM queues q
-            WHERE q.user_id = ?
-            AND q.status IN ('waiting', 'serving')
-            ORDER BY created_at DESC
-            LIMIT 1`,
+    const [settings] = await conn.execute(
+      `SELECT queue_status
+       FROM system_settings
+       WHERE id = 1
+       LIMIT 1`
+    );
+
+    const queueStatus = settings ? settings.queue_status : 'open';
+
+    const [row] = await conn.execute(
+      `SELECT 
+          q.queue_id,
+          q.code,
+          q.full_name,
+          q.status,
+          q.department_id,
+          d.name AS department_name,
+          (
+            SELECT COUNT(*)
+            FROM queues q2
+            WHERE q2.department_id = q.department_id
+              AND q2.status = 'waiting'
+              AND q2.created_at < q.created_at
+          ) AS ahead
+       FROM queues q
+       JOIN departments d ON d.department_id = q.department_id
+       WHERE q.user_id = ?
+         AND q.status IN ('waiting', 'serving')
+       ORDER BY q.created_at DESC
+       LIMIT 1`,
       [uid]
     );
 
-    console.log('the rows of status: ', rows.ahead, rows.code, rows.department_id);
-
-    if (rows) {
-      return res.json({ queued: true, ahead: Number(rows.ahead), code: rows.code, department_id: rows.department_id });
-    } else {
-      return res.json({ queued: false });
+    if (row) {
+      return res.json({
+        success: true,
+        queued: true,
+        queue_open: queueStatus === 'open',
+        queue_status: queueStatus,
+        queue_id: row.queue_id,
+        code: row.code,
+        full_name: row.full_name,
+        status: row.status,
+        department_id: row.department_id,
+        department_name: row.department_name,
+        ahead: Number(row.ahead || 0)
+      });
     }
 
+    return res.json({
+      success: true,
+      queued: false,
+      queue_open: queueStatus === 'open',
+      queue_status: queueStatus
+    });
   } catch (err) {
-    return res.json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
   } finally {
     if (conn) conn.release();
   }
 });
+
 
 app.get('/api/admin/notifications', reqLogin, reqStaffOrAdmin, async (req, res) => {
   let conn;
@@ -1136,7 +1171,7 @@ app.get('/api/admin/dashboard/stats/:department_id', reqLogin, reqStaffOrAdmin, 
   }
 });
 
-app.get('/api/queue/:department_id', async (req, res) => {
+app.get('/api/queue/:department_id', reqLogin, async (req, res) => {
   const { department_id } = req.params;
 
   let conn;
@@ -1145,21 +1180,20 @@ app.get('/api/queue/:department_id', async (req, res) => {
     conn = await pool.getConnection();
 
     const rows = await conn.execute(
-      `SELECT code
-            FROM queues
-            WHERE department_id = ?
-            AND status = 'waiting'
-            ORDER BY is_emergency DESC,
-                      is_priority DESC,
-                      created_at ASC,
-                      queue_id ASC`,
+      `SELECT code, full_name, status
+       FROM queues
+       WHERE department_id = ?
+         AND status = 'waiting'
+       ORDER BY is_emergency DESC,
+                is_priority DESC,
+                created_at ASC,
+                queue_id ASC`,
       [department_id]
     );
 
-    res.json(rows);
+    return res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
-
+    return res.status(500).json({ error: err.message });
   } finally {
     if (conn) conn.release();
   }
@@ -1173,18 +1207,20 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
     return res.status(400).json({ error: 'Missing fields' });
   }
 
-  // Map frontend values to your ENUM
   const categoryMap = {
     pwd: 'priority',
     regular: 'general'
   };
+
   const category = categoryMap[queueType] || 'general';
   const isPriority = priority === 'high' ? 1 : 0;
   const isEmergency = 0;
 
   const conn = await pool.getConnection();
+
   try {
     await conn.beginTransaction();
+
 
     const [categ] = await conn.execute(
       `SELECT code, department_id FROM departments WHERE name = ?`,
@@ -1204,16 +1240,19 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
     );
 
     const [counter] = await conn.execute(
-      `SELECT last_number FROM daily_counters
-       WHERE date = CURDATE() AND department_id = ?`,
+      `SELECT last_number
+       FROM daily_counters
+       WHERE date = CURDATE()
+         AND department_id = ?`,
       [categ.department_id]
     );
 
-    const code = categ.code + String(Number(counter.last_number)).padStart(3, '0');
+    const next = Number(counter.last_number);
+    const code = categ.code + String(next).padStart(3, '0');
 
     const insert = await conn.execute(
-      `INSERT INTO queues 
-         (full_name, category, visit_description, code, user_id, department_id, is_priority, is_emergency)
+      `INSERT INTO queues
+       (full_name, category, visit_description, code, user_id, department_id, is_priority, is_emergency)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [patientName, category, concern, code, uid, categ.department_id, isPriority, isEmergency]
     );
@@ -1221,28 +1260,33 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
     const [ahead] = await conn.execute(
       `SELECT COUNT(*) AS ahead
        FROM queues
-       WHERE created_at < (SELECT created_at FROM queues WHERE code = ?)
-       AND status = 'waiting'`,
-      [code]
+       WHERE department_id = ?
+         AND status = 'waiting'
+         AND created_at < (
+           SELECT created_at FROM queues WHERE queue_id = ?
+         )`,
+      [categ.department_id, insert.insertId]
     );
 
     await conn.commit();
 
-    res.json({
+    return res.json({
       success: true,
       queue_id: Number(insert.insertId),
       department_id: categ.department_id,
-      ahead: Number(ahead.ahead),
+      ahead: Number(ahead.ahead || 0),
       code
     });
   } catch (err) {
     await conn.rollback();
+
     console.error(err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   } finally {
     conn.release();
   }
 });
+
 //END
 
 app.use(express.static('public'));
