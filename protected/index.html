@@ -9,7 +9,6 @@
 </head>
 <body>
  
-    <!-- TOPBAR -->
     <header class="topbar">
     <a class="logo" href="#" onclick="showPage('dept')">
         <div class="logo-icon">
@@ -30,64 +29,60 @@
         <span class="notif-dot"></span>
         </button>
         <div class="profile-btn">
-        <div class="avatar">MR</div>
-        <div class="profile-info">
-            <div class="profile-name">Maria Reyes</div>
-            <div class="profile-role">Head Nurse</div>
-        </div>
+          <div class="avatar" id="profile-avatar">--</div>
+          <div class="profile-info">
+            <div class="profile-name" id="profile-name">Loading...</div>
+            <div class="profile-role" id="profile-role">Loading...</div>
+          </div>
         </div>
     </div>
     </header>
     
-    <!-- NOTIFICATION PANEL -->
     <div class="notif-panel" id="notif-panel">
-    <div class="notif-header">Notifications</div>
-    <div class="notif-item">
-        <div class="notif-dot2" style="background:var(--red)"></div>
-        <div>
-        <div class="notif-text"><strong>High priority</strong> patient detected in Geriatrics — Q-047</div>
-        <div class="notif-time">2 minutes ago</div>
+      <div class="notif-header">Notifications</div>
+      <div id="notif-list">
+        <div class="notif-item">
+          <div class="notif-dot2"></div>
+          <div>
+            <div class="notif-text">No notifications yet.</div>
+            <div class="notif-time">Waiting for queue activity</div>
+          </div>
         </div>
-    </div>
-    <div class="notif-item">
-        <div class="notif-dot2"></div>
-        <div>
-        <div class="notif-text">Queue #038 has been waiting 40+ minutes in Gen Med</div>
-        <div class="notif-time">12 minutes ago</div>
-        </div>
-    </div>
-    <div class="notif-item">
-        <div class="notif-dot2"></div>
-        <div>
-        <div class="notif-text">Dr. Santos marked as available — Counter 2 resumed</div>
-        <div class="notif-time">28 minutes ago</div>
-        </div>
-    </div>
+      </div>
     </div>
     
-    <!-- SIDEBAR -->
     <nav class="sidebar">
-    <button class="side-btn active" title="Departments" onclick="showPage('dept')">
+
+      <button class="side-btn active" data-page="dept" title="Departments" onclick="showPage('dept')">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-        <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
         </svg>
-    </button>
-    <button class="side-btn" title="Queue" onclick="showPage('queue')">
+      </button>
+      <button class="side-btn" data-page="queue" title="Queue" onclick="showPage('queue')">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-        <line x1="8" y1="18" x2="21" y2="18"/>
-        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
-        <line x1="3" y1="18" x2="3.01" y2="18"/>
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+          <line x1="3" y1="18" x2="3.01" y2="18"/>
         </svg>
+      </button>
+      <button class="side-btn" data-page="staff" title="Staff" onclick="showPage('staff')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
     </button>
     <div class="sidebar-spacer"></div>
-    <button class="side-btn" title="Settings">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      <button class="side-btn" data-page="settings" title="Settings" onclick="showPage('settings')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
-    </button>
+      </button>
     <button class="side-btn" id="logoutBtn" title="Log out" style="margin-bottom:0">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -97,10 +92,85 @@
     </button>
     </nav>
     
-    <!-- MAIN -->
     <main class="main">
     
-    <!-- ── DEPARTMENT PAGE ── -->
+
+      <div class="page" id="page-staff">
+        <div class="page-header">
+          <div class="page-title">Staff Management</div>
+          <div class="page-sub">Create staff accounts and assign them to departments</div>
+        </div>
+
+        <div class="staff-layout">
+          <form class="staff-card" id="staff-form">
+            <div class="staff-card-title">Create Staff Account</div>
+
+            <div class="staff-form-grid">
+              <div class="form-group">
+                <label for="staff-full-name">Full Name</label>
+                <input type="text" id="staff-full-name" required>
+              </div>
+
+              <div class="form-group">
+                <label for="staff-contact">Contact Number</label>
+                <input
+                  type="tel"
+                  id="staff-contact"
+                  placeholder="e.g. 09XX XXX XXXX"
+                  name="staffContact"
+                  maxlength="11"
+                  required
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="staff-username">Username</label>
+                <input type="text" id="staff-username" required>
+              </div>
+
+              <div class="form-group">
+                <label for="staff-password">Temporary Password</label>
+                <input type="password" id="staff-password" required>
+              </div>
+
+              <div class="form-group full">
+                <label for="staff-department">Department</label>
+                <select id="staff-department" required>
+                  <option value="">Select department</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="staff-actions">
+              <button type="submit" class="btn-submit">Create Staff</button>
+            </div>
+          </form>
+
+          <div class="staff-card">
+            <div class="staff-card-title">Staff Accounts</div>
+
+            <div class="staff-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Username</th>
+                    <th>Department</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="staff-tbody">
+                  <tr>
+                    <td colspan="4" style="color: var(--text3); padding: 16px;">
+                      No staff accounts loaded.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     <div class="page active" id="page-dept">
         <div class="page-header">
         <div class="page-title">Departments</div>
@@ -122,8 +192,82 @@
         </div>
         <div class="dept-grid" id="dept-grid"></div>
     </div>
+
+      <div class="page" id="page-settings">
+        <div class="page-header">
+          <div class="page-title">Settings</div>
+          <div class="page-sub">Configure departments and counters used by the queue system</div>
+        </div>
+
+        <div class="settings-layout">
+          <section class="settings-panel">
+            <div class="settings-panel-title">Create Counter</div>
+
+            <form id="counter-form" class="settings-form">
+              <div class="form-group">
+                <label for="counter-name">Counter Name</label>
+                <input
+                  type="text"
+                  id="counter-name"
+                  placeholder="Example: Counter 1"
+                  required
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="counter-department">Department</label>
+                <select id="counter-department" required>
+                  <option value="">Select department</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="counter-status">Initial Status</label>
+                <select id="counter-status">
+                  <option value="open">Open</option>
+                  <option value="break">Break</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+
+              <button type="submit" class="btn-submit">Create Counter</button>
+            </form>
+          </section>
+
+          <section class="settings-panel">
+            <div class="settings-panel-header">
+              <div>
+                <div class="settings-panel-title">Counters</div>
+                <div class="settings-panel-sub">Edit counter names, departments, and status</div>
+              </div>
+
+              <button class="btn-light" onclick="loadCountersSettings()">Refresh</button>
+            </div>
+
+            <div class="settings-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Counter</th>
+                    <th>Department</th>
+                    <th>Status</th>
+                    <th>Current Queue</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="settings-counters-tbody">
+                  <tr>
+                    <td colspan="5" style="padding: 16px; color: var(--text3);">
+                      No counters loaded.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
     
-    <!-- ── QUEUE PAGE ── -->
     <div class="page" id="page-queue">
         <div class="back-row">
         <button class="back-btn" onclick="showPage('dept')">
@@ -134,7 +278,7 @@
         </button>
         <div class="dept-badge">
             <span class="dept-badge-dot"></span>
-            <span id="active-dept-name">Gen Med / Internal Medicine</span>
+            <span id="active-dept-name">No department selected</span>
         </div>
         </div>
     
@@ -143,29 +287,24 @@
         <button class="tab-btn" onclick="switchTab('line',this)">Queue Line</button>
         </div>
     
-        <!-- TAB 1 - MAIN -->
         <div class="tab-content active" id="tab-main">
-        <!-- Counter cards -->
         <div class="counters-row" id="counters-row"></div>
     
-        <!-- Queue card + Next up -->
         <div class="queue-main-row">
             <div class="queue-card" id="queue-card">
             <div class="queue-number-section">
                 <div class="queue-now-label">Now Serving</div>
-                <div class="queue-number" id="q-number">042</div>
-                <div class="queue-patient-name" id="q-name">Rosario Mendoza</div>
-                <div class="queue-patient-sub" id="q-sub">F · 72 years</div>
-                <div class="queue-chips">
-                <span class="priority-chip high" id="q-priority">High</span>
-                <span class="time-chip" id="q-time">Called at 09:34 AM</span>
+                <div class="queue-number" id="q-number">---</div>
+                <div class="queue-patient-name" id="q-name">No patient in queue</div>
+                <div class="queue-patient-sub" id="q-sub">Patient details unavailable</div>
+                <span class="priority-chip medium" id="q-priority">Normal</span>
+                <span class="time-chip" id="q-time">Not called yet</span>
                 </div>
             </div>
             <div class="queue-divider"></div>
             <div class="queue-actions-section">
-                <button class="btn-recall" onclick="recallQueue()">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                Recall
+                <button class="btn-recall" onclick="callNextPatient()">
+                  Call Next
                 </button>
                 <button class="btn-skip" onclick="skipQueue()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 17 12 12 5 7"/><polyline points="14 17 21 12 14 7"/></svg>
@@ -180,10 +319,8 @@
             </div>
         </div>
     
-        <!-- Stats -->
         <div class="stats-row">
             <div class="stat-card">
-                <!-- ADDED: stat-icon green-icon -->
                <div class="stat-icon green-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -194,10 +331,9 @@
                </div>
 
                 <div class="stat-label">Patients in Queue</div>
-                <div class="stat-value" id="stat-queue">18</div>
+                <div class="stat-value" id="stat-queue">0</div>
             </div>
             <div class="stat-card">
-                <!-- ADDED: stat-icon blue-icon -->
                <div class="stat-icon blue-icon">
                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                    <polyline points="20 6 9 17 4 12"/>
@@ -205,11 +341,10 @@
                </div>
 
                 <div class="stat-label">Patients Served Today</div>
-                <div class="stat-value" id="stat-served">47</div>
+                <div class="stat-value" id="stat-served">0</div>
                 <div class="stat-sub up" id="stat-served-sub">↑ +12% from yesterday</div>
             </div>
             <div class="stat-card">
-                <!-- ADDED: stat-icon amber-icon -->
                <div class="stat-icon amber-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"/>
@@ -218,10 +353,9 @@
                </div>
 
                 <div class="stat-label">Currently Waiting</div>
-                <div class="stat-value" id="stat-waiting">14</div>
+                <div class="stat-value" id="stat-waiting">0</div>
             </div>
             <div class="stat-card">
-                <!-- ADDED: stat-icon green-icon -->
                <div class="stat-icon green-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
@@ -229,14 +363,14 @@
                </div>
 
                 <div class="stat-label">Avg Wait Time</div>
-                <div class="stat-value" id="stat-wait">~23 min</div>
+                <div class="stat-value" id="stat-wait">0</div>
                 <div class="stat-sub dn" id="stat-wait-sub">↑ +8% from yesterday</div>
             </div>
         </div>
         </div>
 
+
     
-        <!-- TAB 2 - QUEUE LINE -->
         <div class="tab-content" id="tab-line">
         <div class="queue-line-header">
             <div class="queue-line-title">All Patients<span style="color:var(--text3);font-weight:400;font-size:13px" id="line-count"></span></div>
@@ -266,7 +400,6 @@
     
     </main>
     
-    <!-- AI PRIORITY BUBBLE -->
     <button class="ai-bubble-btn" onclick="toggleAI()" title="AI Priority Assistant">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 2a10 10 0 1 0 10 10"/>
@@ -277,7 +410,6 @@
     <span class="ai-ping" id="ai-ping"></span>
     </button>
     
-    <!-- AI PANEL -->
     <div class="ai-panel" id="ai-panel">
     <div class="ai-panel-header">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -290,18 +422,18 @@
         <div class="ai-alert-icon red-ai-icon">⚠</div>
         <div>
         <div class="ai-alert-text">
-            <strong>Q-052 · Gian </strong> Vitals indicate possible cardiac distress. Recommend moving to top of queue.
-            <small>Detected 2 min ago · Confidence 94%</small>
+            <strong>No AI alert available</strong>
+            Priority suggestions will appear here once the AI feature is connected.
+            <small>Waiting for patient data</small>
         </div>
         </div>
     </div>
     <div class="ai-panel-actions">
-        <button class="ai-act-btn primary" onclick="acceptAI()">Promote Q-047</button>
+        <button class="ai-act-btn primary" onclick="toggleAI()">Acknowledge</button>
         <button class="ai-act-btn secondary" onclick="toggleAI()">Dismiss</button>
     </div>
     </div>
     
-    <!-- ADD PATIENT MODAL -->
     <div class="modal-overlay" id="modal-overlay" onclick="closeModalOuter(event)">
     <div class="modal">
         <div class="modal-header">
@@ -362,6 +494,8 @@
         </div>
     </div>
     </div>
+
+
     
     <script src="/js/script.js"></script>
 </body>

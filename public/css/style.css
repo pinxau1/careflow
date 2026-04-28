@@ -34,10 +34,11 @@
 }
 html,
 body {
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
 }
 body {
+  overflow-y: auto;
+  overflow-x: hidden;
   font-family: "DM Sans", system-ui, sans-serif;
   font-size: 14px;
   color: var(--text);
@@ -183,7 +184,6 @@ input {
   justify-content: center;
 }
 
-/* === START OF ADDED SCRIPT - REFACTOR === */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
  
   :root {
@@ -220,7 +220,6 @@ input {
     min-height: 100vh;
   }
  
-  /* ── TOPBAR ── */
   .topbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 100;
     height: 60px;
@@ -276,7 +275,6 @@ input {
   .profile-name { font-size: 13px; font-weight: 600; color: var(--text); }
   .profile-role { font-size: 11px; color: var(--text2); }
  
-  /* ── SIDEBAR ── */
   .sidebar {
     position: fixed; left: 0; top: 60px; bottom: 0; width: 60px;
     background: var(--surface);
@@ -305,14 +303,11 @@ input {
     white-space: nowrap; pointer-events: none; z-index: 200;
   }
  
-  /* ── MAIN LAYOUT ── */
-  .main { margin-left: 60px; margin-top: 60px; padding: 24px; }
+  .main { margin-left: 60px; margin-top: 60px; padding: 24px; min-height: calc(100vh - 60px); overflow: visible; }
  
-  /* ── PAGE SYSTEM ── */
   .page { display: none; }
   .page.active { display: block; }
  
-  /* ── DEPARTMENT PAGE ── */
   .page-header { margin-bottom: 24px; }
   .page-title { font-size: 22px; font-weight: 700; color: var(--text); }
   .page-sub { font-size: 14px; color: var(--text2); margin-top: 2px; }
@@ -351,7 +346,6 @@ input {
     background: var(--green); color: white; border-color: var(--green);
   }
  
-  /* Department grid */
   .dept-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -394,7 +388,6 @@ input {
   .dept-queue { font-size: 13px; color: var(--text2); }
   .dept-queue span { font-weight: 600; color: var(--text); }
  
-  /* ── QUEUE PAGE ── */
   .back-row {
     display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
   }
@@ -414,7 +407,6 @@ input {
     width: 8px; height: 8px; border-radius: 50%; background: var(--green);
   }
  
-  /* Tabs */
   .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
   .tab-btn {
     padding: 10px 20px; font-family: inherit; font-size: 14px; font-weight: 500;
@@ -425,7 +417,6 @@ input {
   .tab-btn:hover { color: var(--text); }
   .tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
  
-  /* Counter cards */
   .counters-row {
     display: flex; gap: 14px; margin-bottom: 24px; overflow-x: auto; padding-bottom: 4px;
   }
@@ -449,7 +440,6 @@ input {
   .counter-spec { font-size: 12px; color: var(--text2); }
   .counter-avg { font-size: 11px; color: var(--text3); margin-top: 4px; }
  
-  /* Queue card section */
   .queue-main-row {
     display: grid; grid-template-columns: 1fr 320px; gap: 18px; margin-bottom: 20px;
   }
@@ -502,7 +492,6 @@ input {
   }
   .btn-skip:hover { background: var(--red-light); color: var(--red); border-color: var(--red); }
  
-  /* Next up card */
   .next-card {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 20px;
@@ -521,7 +510,6 @@ input {
   .next-pname { font-size: 13px; font-weight: 500; color: var(--text); }
   .next-psub { font-size: 12px; color: var(--text2); }
  
-  /* Stats row */
   .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
   .stat-card {
     background: var(--surface); border: 1px solid var(--border);
@@ -534,7 +522,6 @@ input {
   .stat-sub.up { color: #16a34a; }
   .stat-sub.dn { color: var(--red); }
  
-  /* ── QUEUE LINE TAB ── */
   .queue-line-header {
     display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
   }
@@ -585,7 +572,6 @@ input {
   .act-btn:hover { border-color: var(--green); color: var(--green); background: var(--green-light); }
   .act-btn.del:hover { border-color: var(--red); color: var(--red); background: var(--red-light); }
  
-  /* ── AI BUBBLE ── */
   .ai-bubble-btn {
     position: fixed; bottom: 28px; right: 28px; z-index: 200;
     width: 52px; height: 52px; border-radius: 50%;
@@ -608,7 +594,6 @@ input {
     50% { transform: scale(1.3); opacity: 0.7; }
   }
  
-  /* AI Panel */
   .ai-panel {
     position: fixed; bottom: 90px; right: 28px; z-index: 200;
     width: 320px; background: var(--surface);
@@ -650,7 +635,6 @@ input {
   .ai-act-btn.secondary { background: var(--bg); color: var(--text2); border: 1px solid var(--border2); }
   .ai-act-btn.secondary:hover { background: var(--border); }
  
-  /* ── ADD PATIENT MODAL ── */
   .modal-overlay {
     position: fixed; inset: 0; z-index: 300;
     background: rgba(0,0,0,0.4);
@@ -698,11 +682,9 @@ input {
   }
   .btn-submit:hover { background: var(--green-dark); }
  
-  /* Tab content */
   .tab-content { display: none; }
   .tab-content.active { display: block; }
  
-  /* Notification dropdown */
   .notif-panel {
     position: fixed; top: 60px; right: 80px; z-index: 150;
     width: 300px; background: var(--surface);
@@ -717,7 +699,6 @@ input {
   .notif-text { font-size: 13px; color: var(--text); line-height: 1.4; }
   .notif-time { font-size: 11px; color: var(--text3); margin-top: 2px; }
  
-  /* Scrollbar */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
 
@@ -768,7 +749,6 @@ input {
   color: var(--text3);
   margin-left: 4px;
 }
-/* === END OF ADDED SCRIPT === */
 
 
 .toast-wrap {
@@ -1099,4 +1079,154 @@ textarea.settings-input {
 }
 .muted {
   color: var(--gray);
+}
+
+.placeholder-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text3);
+  text-align: center;
+  opacity: 0.85;
+}
+
+.staff-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  width: 100%;
+}
+
+.staff-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.staff-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.staff-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.staff-form-grid .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.staff-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.staff-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+#staff-department,
+.staff-table-wrap select {
+  width: 100%;
+  min-width: 180px;
+}
+
+@media (max-width: 1000px) {
+  .staff-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.settings-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.settings-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.settings-panel-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.settings-panel-sub {
+  font-size: 13px;
+  color: var(--text2);
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.settings-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.settings-table-wrap input,
+.settings-table-wrap select {
+  width: 100%;
+  min-width: 130px;
+}
+
+.btn-light {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  color: var(--text2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-light:hover {
+  border-color: var(--green);
+  color: var(--green);
+  background: var(--green-light);
+}
+
+@media (max-width: 1000px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
 }

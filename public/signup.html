@@ -49,11 +49,12 @@
             <label for="signup-contact">Contact Number <span class="required">*</span></label>
             <div class="input-container" id="ic-contact">
               <span class="material-symbols-outlined">phone</span>
-              <input
-                type="tel"
+              <input 
+                type="tel" 
                 id="signup-contact"
-                placeholder="e.g. 09XX XXX XXXX"
                 name="contactNum"
+                pattern="^(\+63|0)9\d{9}$"
+                placeholder="09XX XXX XXXX"
                 maxlength="11"
                 required
               />

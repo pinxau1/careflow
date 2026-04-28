@@ -84,9 +84,11 @@ if (formLogin) {
     });
     const data = await res.json();
     if (data.success) {
-      window.location.href = '/';
-    } else {
-      alert(data.error);
+      if (data.role === 'owner' || data.role === 'admin' || data.role === 'staff') {
+        window.location.href = '/';
+      } else {
+        window.location.href = '/queue';
+      }
     }
   });
 

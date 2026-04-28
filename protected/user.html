@@ -9,7 +9,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/styleRoj.css" />
+    <link rel="stylesheet" href="/css/styleRoj.css" />
   </head>
   <body>
     <header>
@@ -63,6 +63,7 @@
       <div class="right-panel">
         <form class="add-card" id="add-queue-form">
           <div class="card-title">Add to queue</div>
+
           <div class="form-row">
             <div class="field">
               <label for="inp-name">Name</label>
@@ -72,16 +73,26 @@
                 placeholder="Enter patient's full name"
                 name="name"
                 maxlength="40"
-                onkeydown="if (event.key === 'Enter') addToQueue();"
               />
             </div>
+
             <div class="field">
-              <label for="inp-service">Service type</label>
+              <label for="inp-service">Department</label>
               <select id="inp-service" name="serviceType">
-                <option value="general">General</option>
-                <option value="support">Support</option>
-                <option value="priority">Priority</option>
-                <option value="complaint">Complaint</option>
+                <option value="General Medicine">General</option>
+                <option value="Pediatrics">Pediatrics</option>
+                <option value="Obstetrics">Obstetrics</option>
+                <option value="Emergency Room">Emergency Room</option>
+                <option value="Laboratory">Laboratory</option>
+                <option value="Pharmacy">Pharmacy</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="inp-queue-type">Queue Type</label>
+              <select id="inp-queue-type" name="queueType">
+                <option value="regular">Regular</option>
+                <option value="pwd">Priority</option>
               </select>
             </div>
 
@@ -94,7 +105,8 @@
                 placeholder="Describe your concern or reason for visit..."
               ></textarea>
             </div>
-            <button type="submit" class="btn-add" >+ Add</button>
+
+            <button type="submit" class="btn-add">Add</button>
           </div>
         </form>
 
@@ -116,6 +128,6 @@
 
     <div id="toast"></div>
 
-    <script src="js/script.js"></script>
+    <script src="/js/script.js"></script>
   </body>
 </html>

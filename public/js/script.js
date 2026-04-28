@@ -1,83 +1,178 @@
-// ─────────────────────────────────────────────
-//  CAREFLOW — ADMIN DASHBOARD SCRIPT
-//  Covers the refactored CareFlow UI (index.html)
-//  and preserves all original API/backend logic.
-// ─────────────────────────────────────────────
-
-// ─── GUARD: only run dashboard logic on the admin page ───
 const indexFlow = document.getElementById('indexFlow');
 const patientEl = document.getElementById('patientFlow');
 const mockAdmin = document.getElementById('mockFlow');
 
-
-// ════════════════════════════════════════════════════════
-//  ADMIN DASHBOARD  (new CareFlow UI — index.html)
-// ════════════════════════════════════════════════════════
-// The new UI does not use an indexFlow wrapper div,
-// so we detect it by the presence of #dept-grid instead.
 const isDashboard = !!document.getElementById('dept-grid');
 
 if (isDashboard) {
 
-  // ─── DATA ───
-  // In production these would be fetched from your API.
-  // The shape is kept identical to the original so your
-  // backend calls can replace these arrays directly.
-  const departments = [
-    { id: 'genmed', name: 'Gen Med / Internal Medicine', type: 'patient-care', queue: 18, color: '#e8f7f2', emoji: '🏥' },
-    { id: 'birthing', name: 'Birthing / OB-GYN', type: 'patient-care', queue: 7, color: '#fef3f2', emoji: '🤱' },
-    { id: 'geriatrics', name: 'Geriatrics', type: 'patient-care', queue: 12, color: '#eff6ff', emoji: '🧓' },
-    { id: 'radiology', name: 'Radiology', type: 'laboratory', queue: 5, color: '#fefce8', emoji: '🔬' },
-    { id: 'pathology', name: 'Clinical Pathology', type: 'laboratory', queue: 0, color: '#f0fdf4', emoji: '🧪' },
-    { id: 'pharmacy', name: 'Pharmacy', type: 'support', queue: 3, color: '#faf5ff', emoji: '💊' },
-    { id: 'cardiology', name: 'Cardiology', type: 'patient-care', queue: 14, color: '#fff1f2', emoji: '❤️' },
-    { id: 'neurology', name: 'Neurology', type: 'patient-care', queue: 6, color: '#f0f4ff', emoji: '🧠' },
-  ];
-
-  const counters = [
-    { room: 'Room 1', num: '042', doctor: 'Dr. Ana Santos', spec: 'General Medicine', avg: '8 min' },
-    { room: 'Room 2', num: '039', doctor: 'Dr. Marco Ramos', spec: 'Internal Medicine', avg: '11 min' },
-    { room: 'Room 3', num: '041', doctor: 'Dr. Liza Torres', spec: 'General Practice', avg: '7 min' },
-  ];
-
-  let patients = [
-    { q: '042', name: 'Imong Nawng', gender: 'F', age: 72, priority: 'high', status: 'serving', counter: 'Room 1 — Dr. Santos', wait: 'Serving now' },
-    { q: '043', name: 'Imong Mama', gender: 'M', age: 58, priority: 'medium', status: 'waiting', counter: 'Room 1 — Dr. Santos', wait: '~8 min' },
-    { q: '044', name: 'Imong Tae', gender: 'F', age: 41, priority: 'low', status: 'waiting', counter: 'Room 2 — Dr. Ramos', wait: '~14 min' },
-    { q: '039', name: 'Imong Betlog', gender: 'M', age: 67, priority: 'medium', status: 'waiting', counter: 'Room 3 — Dr. Torres', wait: '~19 min' },
-    { q: '045', name: 'Rain', gender: 'F', age: 34, priority: 'low', status: 'waiting', counter: 'Room 2 — Dr. Ramos', wait: '~22 min' },
-    { q: '046', name: 'SK Girl', gender: 'M', age: 80, priority: 'high', status: 'waiting', counter: 'Room 1 — Dr. Santos', wait: '~27 min' },
-    { q: '047', name: 'Shaken', gender: 'F', age: 65, priority: 'high', status: 'waiting', counter: 'Room 3 — Dr. Torres', wait: '~31 min' },
-    { q: '048', name: 'AJ Nicole', gender: 'M', age: 52, priority: 'low', status: 'waiting', counter: 'Room 2 — Dr. Ramos', wait: '~36 min' },
-  ];
-
-  let activeDept = 'genmed';
+  let currentRole = null;
+  let departments = [];
+  let counters = [];
+  let patients = [];
+  let activeDept = null;
   let activeFilter = 'all';
   let searchVal = '';
+  let queueOpen = true;
+  let cutoffTime = '17:00';
+  let qNum = 42;
 
-  // ─── DEPARTMENT GRID ───
+  let dashboardStats = {
+    inQueue: 0, waiting: 0, servedToday: 0, avgWaitMin: null
+  };
+
+  function formatTime(twentyFour) {
+    if (!twentyFour || !twentyFour.includes(':')) return 'Not set';
+    const [h, m] = twentyFour.split(':');
+    const hour = parseInt(h, 10);
+    const hour12 = hour % 12 || 12;
+    return String(hour12).padStart(2, '0') + ':' + m + ' ' + (hour >= 12 ? 'PM' : 'AM');
+  }
+
+  function getDemographicText(p) {
+    return `${p.gender || 'Gender'} · ${p.age || 'Age'}`;
+  }
+
+  function getActiveDepartmentName() {
+    const dept = departments.find(d => d.id === activeDept);
+    return dept ? dept.name : '';
+  }
+
+  async function fetchBootstrapData() {
+    const res = await fetch('/api/admin/dashboard/bootstrap');
+    if (!res.ok) {
+      throw new Error('Failed to load dashboard bootstrap data');
+    }
+    const data = await res.json();
+
+    const deptColors = ['#e8f7f2', '#fef3f2', '#eff6ff', '#fefce8', '#f0fdf4', '#faf5ff', '#fff1f2', '#f0f4ff'];
+
+    function inferDeptType(name) {
+      const n = String(name || '').toLowerCase();
+      if (n.includes('lab') || n.includes('pathology') || n.includes('radio')) return 'laboratory';
+      if (n.includes('pharmacy') || n.includes('support')) return 'support';
+      return 'patient-care';
+    }
+
+    departments = (data.departments || []).map((d, i) => ({
+      id: String(d.department_id),
+      name: d.name,
+      code: d.code,
+      type: inferDeptType(d.name),
+      queue: Number(d.queue_count || 0),
+      color: deptColors[i % deptColors.length],
+      imagePlaceholder: 'Dept'
+    }));
+
+    counters = (data.counters || []).map(c => ({
+      counterId: Number(c.counter_id),
+      departmentId: String(c.department_id),
+      room: c.name || `Counter ${c.counter_id}`,
+      num: c.current_queue_id ? String(c.current_queue_id).padStart(3, '0') : '---',
+      doctor: c.name || `Counter ${c.counter_id}`,
+      spec: 'General Consultation',
+      avg: 'N/A',
+      available: c.status === 'open'
+    }));
+
+    queueOpen = data.queue_status !== 'closed';
+    currentRole = data.role;
+  }
+  function applyRoleUI() {
+    if (currentRole === 'staff') {
+      const deptSideButton = document.querySelector('.side-btn[title="Departments"]');
+      if (deptSideButton) deptSideButton.style.display = 'none';
+
+      const staffSideButton = document.querySelector('.side-btn[title="Staff"]');
+      if (staffSideButton) staffSideButton.style.display = 'none';
+
+      const settingsSideButton = document.querySelector('.side-btn[title="Settings"]');
+      if (settingsSideButton) settingsSideButton.style.display = 'none';
+
+      const backBtn = document.querySelector('.back-btn');
+      if (backBtn) backBtn.style.display = 'none';
+
+      return;
+    }
+
+    if (currentRole !== 'owner' && currentRole !== 'admin') {
+      const staffSideButton = document.querySelector('.side-btn[title="Staff"]');
+      if (staffSideButton) staffSideButton.style.display = 'none';
+
+      const settingsSideButton = document.querySelector('.side-btn[title="Settings"]');
+      if (settingsSideButton) settingsSideButton.style.display = 'none';
+    }
+  }
+
+
+  async function fetchDepartmentQueues(departmentId) {
+    const res = await fetch('/api/admin/dashboard/department/' + departmentId);
+    if (!res.ok) throw new Error('Failed to load department queue data');
+    const data = await res.json();
+    patients = (data.queues || []).map(q => ({
+      queueId: Number(q.queue_id),
+      q: q.code || String(q.queue_id).padStart(3, '0'),
+      name: q.full_name || 'Unknown patient',
+      gender: q.sex || '',
+      age: q.age || '',
+      priority: q.is_emergency || q.is_priority ? 'high' : 'medium',
+      status: q.status,
+      counter: q.counter_name || 'Unassigned',
+      wait: q.status === 'serving' ? 'Serving now' : 'Waiting',
+      queueType: q.category === 'priority' ? 'pwd' : 'regular',
+      reason: q.visit_description || q.category || 'No visit description',
+      calledAt: q.called_at
+    }));
+  }
+
+  async function fetchDepartmentStats(departmentId) {
+    const res = await fetch('/api/admin/dashboard/stats/' + departmentId);
+    if (!res.ok) throw new Error('Failed to load department statistics');
+    const data = await res.json();
+    const stats = data.stats || {};
+    dashboardStats = {
+      inQueue: Number(stats.in_queue || 0),
+      waiting: Number(stats.waiting || 0),
+      servedToday: Number(stats.served_today || 0),
+      avgWaitMin: stats.avg_wait_min === null ? null : Number(stats.avg_wait_min)
+    };
+  }
+
+
   function renderDepts() {
     const grid = document.getElementById('dept-grid');
+
     const filtered = departments.filter(d => {
       const matchType = activeFilter === 'all' || d.type === activeFilter;
       const matchSearch = d.name.toLowerCase().includes(searchVal.toLowerCase());
       return matchType && matchSearch;
     });
 
+    if (!filtered.length) {
+      grid.innerHTML = `
+      <div class="empty-state">
+        No departments found.
+      </div>
+    `;
+      return;
+    }
+
     grid.innerHTML = filtered.map(d => `
-      <div class="dept-card" onclick="openDept('${d.id}','${d.name.replace(/'/g, "\\'")}')">
-        <div class="dept-img" style="background:${d.color}">
-          <div class="dept-img-bg">${d.emoji}</div>
-        </div>
-        <div class="dept-info">
-          <div class="dept-name">${d.name}</div>
-          <div class="dept-meta">
-            <span class="dept-type ${d.type === 'laboratory' ? 'lab' : d.type === 'support' ? 'support' : ''}">${d.type.replace('-', ' ')}</span>
-            <span class="dept-queue">Queue: <span>${d.queue ?? 0}</span></span>
-          </div>
+    <div class="dept-card" onclick="openDept('${d.id}','${d.name.replace(/'/g, "\\'")}')">
+      <div class="dept-img" style="background:${d.color}">
+        <div class="dept-img-bg placeholder-text">Department image</div>
+      </div>
+      <div class="dept-info">
+        <div class="dept-name">${d.name}</div>
+        <div class="dept-meta">
+          <span class="dept-type ${d.type === 'laboratory' ? 'lab' : d.type === 'support' ? 'support' : ''}">
+            ${d.type.replace('-', ' ')}
+          </span>
+          <span class="dept-queue">Queue: <span>${d.queue}</span></span>
         </div>
       </div>
-    `).join('');
+    </div>
+  `).join('');
   }
 
   function filterDepts(val) { searchVal = val; renderDepts(); }
@@ -89,45 +184,31 @@ if (isDashboard) {
     renderDepts();
   }
 
-  // ─── PAGE NAVIGATION ───
-  function showPage(p) {
-    document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
-    document.getElementById('page-' + p).classList.add('active');
-    document.querySelectorAll('.side-btn').forEach((b, i) => {
-      b.classList.remove('active');
-      if ((p === 'dept' && i === 0) ||
-        (p === 'queue' && i === 1)) b.classList.add('active');
-    });
-  }
-
-  function openDept(id, name) {
-    activeDept = id;
-    document.getElementById('active-dept-name').textContent = name;
-    showPage('queue');
-    renderCounters();
-    renderNextList();
-    renderTable();
-    switchTab('main', document.querySelector('.tab-btn'));
-  }
-
-  // ─── TABS ───
-  function switchTab(tab, btn) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    if (btn) btn.classList.add('active');
-    document.getElementById('tab-' + tab).classList.add('active');
-  }
-
-  // ─── COUNTER CARDS ───
   function renderCounters() {
     const row = document.getElementById('counters-row');
-    row.innerHTML = counters.map((c, i) => `
+    const deptCounters = counters.filter(c => c.departmentId === String(activeDept));
+    if (!deptCounters.length) {
+      row.innerHTML = `<div class="counter-card">No counters configured for this department.</div>`;
+      return;
+    }
+    row.innerHTML = deptCounters.map((c, i) => `
       <div class="counter-card ${i === 0 ? 'active-counter' : ''}" onclick="selectCounter(${i}, this)">
         <div class="counter-room">${c.room}</div>
         <div class="counter-num">${c.num}</div>
         <div class="counter-doctor">${c.doctor}</div>
         <div class="counter-spec">${c.spec}</div>
         <div class="counter-avg">Avg ${c.avg}/patient</div>
+        <div class="counter-toggle-row" onclick="event.stopPropagation()">
+          <span class="counter-status ${c.available ? 'on' : 'off'}">${c.available ? 'Available' : 'On Break'}</span>
+          <label class="toggle mini ${!queueOpen ? 'disabled' : ''}">
+            <input type="checkbox"
+              ${c.available ? 'checked' : ''}
+              ${!queueOpen ? 'disabled' : ''}
+              onchange="toggleDoctorAvailability(${c.counterId}, this.checked)"
+              onclick="event.stopPropagation()">
+            <span class="toggle-knob"></span>
+          </label>
+        </div>
       </div>
     `).join('');
   }
@@ -137,7 +218,54 @@ if (isDashboard) {
     el.classList.add('active-counter');
   }
 
-  // ─── NEXT-UP LIST ───
+
+  function formatDateTime(value) {
+    if (!value) return 'Not called yet';
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Not called yet';
+
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  function renderNowServingCard() {
+    const serving = patients.find(p => p.status === 'serving');
+
+    const qNumber = document.getElementById('q-number');
+    const qName = document.getElementById('q-name');
+    const qSub = document.getElementById('q-sub');
+    const qPriority = document.getElementById('q-priority');
+    const qTime = document.getElementById('q-time');
+
+    if (!serving) {
+      if (qNumber) qNumber.textContent = '---';
+      if (qName) qName.textContent = 'No patient currently serving';
+      if (qSub) qSub.textContent = 'Select Call on the next patient';
+      if (qPriority) {
+        qPriority.className = 'priority-chip medium';
+        qPriority.textContent = 'Normal';
+      }
+      if (qTime) qTime.textContent = 'Not called yet';
+      return;
+    }
+
+    if (qNumber) qNumber.textContent = serving.q;
+    if (qName) qName.textContent = serving.name;
+    if (qSub) qSub.textContent = getDemographicText(serving);
+
+    if (qPriority) {
+      qPriority.className = 'priority-chip ' + serving.priority;
+      qPriority.textContent = serving.priority === 'high' ? 'High' : 'Normal';
+    }
+
+    if (qTime) {
+      qTime.textContent = serving.calledAt ? 'Called at ' + formatDateTime(serving.calledAt) : 'Not called yet';
+    }
+  }
+
   function renderNextList() {
     const waiting = patients.filter(p => p.status === 'waiting').slice(0, 4);
     document.getElementById('next-list').innerHTML = waiting.map(p => `
@@ -145,30 +273,25 @@ if (isDashboard) {
         <div class="next-num">${p.q}</div>
         <div>
           <div class="next-pname">${p.name}</div>
-          <div class="next-psub">${p.gender} · ${p.age} yrs · ${p.wait}</div>
+          <div class="next-psub">${getDemographicText(p)} · ${p.wait}</div>
         </div>
         <span class="priority-chip ${p.priority}" style="margin-left:auto;font-size:11px">${p.priority}</span>
       </div>
     `).join('');
   }
 
-  // ─── QUEUE TABLE ───
-  function renderTable() {
-    const priorityOrder = { high: 0, medium: 1, low: 2 };
-    const sorted = [...patients].sort((a, b) => {
-      if (a.status === 'serving') return -1;
-      if (b.status === 'serving') return 1;
-      return priorityOrder[a.priority] - priorityOrder[b.priority];
-    });
 
-    document.getElementById('line-count').textContent = `(${patients.length} patients)`;
-    document.getElementById('queue-tbody').innerHTML = sorted.map(p => `
+  function renderQueueRows(list) {
+    if (!list.length) {
+      return `<tr><td colspan="7" style="color:var(--text3);padding:16px">No patients in this queue.</td></tr>`;
+    }
+    return list.map(p => `
       <tr>
         <td><span class="priority-chip ${p.priority}">${p.priority}</span></td>
         <td class="td-queue">${p.q}</td>
         <td style="font-weight:500">${p.name}</td>
         <td><span class="status-badge ${p.status}">${p.status}</span></td>
-        <td style="font-size:13px;color:var(--text2)">${p.counter}</td>
+        <td>${p.counter}</td>
         <td class="ai-wait"><strong>${p.wait}</strong></td>
         <td>
           <div class="action-btns">
@@ -176,7 +299,7 @@ if (isDashboard) {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
               Call
             </button>
-            <button class="act-btn del" onclick="deletePatient('${p.q}')">
+            <button class="act-btn del" onclick="deletePatient(${p.queueId || 0}, '${p.q}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
               Remove
             </button>
@@ -186,96 +309,577 @@ if (isDashboard) {
     `).join('');
   }
 
-  // ─── QUEUE ACTIONS ───
-  let qNum = 42;
+  function renderTable() {
+    const tbody = document.getElementById('queue-tbody');
+    const lineCount = document.getElementById('line-count');
+
+    if (!tbody) return;
+
+    const priorityOrder = { high: 0, medium: 1, low: 2 };
+
+    const sorted = [...patients].sort((a, b) => {
+      if (a.status === 'serving') return -1;
+      if (b.status === 'serving') return 1;
+
+      const aPriority = priorityOrder[a.priority] ?? 2;
+      const bPriority = priorityOrder[b.priority] ?? 2;
+
+      if (aPriority !== bPriority) return aPriority - bPriority;
+
+      return String(a.q).localeCompare(String(b.q));
+    });
+
+    if (lineCount) {
+      lineCount.textContent = ` (${patients.length} patients)`;
+    }
+
+    tbody.innerHTML = renderQueueRows(sorted);
+  }
+
+
+  function renderStats() {
+    const queueEl = document.getElementById('stat-queue');
+    const servedEl = document.getElementById('stat-served');
+    const waitingEl = document.getElementById('stat-waiting');
+    const waitEl = document.getElementById('stat-wait');
+    const servedSubEl = document.getElementById('stat-served-sub');
+    const waitSubEl = document.getElementById('stat-wait-sub');
+    if (queueEl) queueEl.textContent = String(dashboardStats.inQueue);
+    if (servedEl) servedEl.textContent = String(dashboardStats.servedToday);
+    if (waitingEl) waitingEl.textContent = String(dashboardStats.waiting);
+    if (waitEl) waitEl.textContent = dashboardStats.avgWaitMin === null ? 'N/A' : `~${Math.round(dashboardStats.avgWaitMin)} min`;
+    if (servedSubEl) servedSubEl.textContent = 'From completed queues today';
+    if (waitSubEl) waitSubEl.textContent = 'Average from called queues today';
+  }
+
+
+  function renderQueueControls() {
+    const cutoffDisplay = document.getElementById('queue-cutoff-display');
+    const cutoffInput = document.getElementById('queue-cutoff-time');
+    const queueNotice = document.getElementById('queue-closed-notice');
+    const queueManagementContent = document.getElementById('queue-management-content');
+    if (cutoffDisplay) cutoffDisplay.textContent = 'Cutoff: ' + formatTime(cutoffTime);
+    if (cutoffInput) cutoffInput.value = cutoffTime;
+    if (queueNotice) queueNotice.classList.toggle('open', !queueOpen);
+    if (queueManagementContent) queueManagementContent.classList.toggle('queue-closed-dim', !queueOpen);
+  }
+
+
+  function showPage(p) {
+    document.querySelectorAll('.page').forEach(el => {
+      el.classList.remove('active');
+    });
+
+    const page = document.getElementById('page-' + p);
+    if (page) page.classList.add('active');
+
+    document.querySelectorAll('.side-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+
+    const activeButton = document.querySelector(`.side-btn[data-page="${p}"]`);
+    if (activeButton) activeButton.classList.add('active');
+
+    if (p === 'staff') {
+      loadStaffPage();
+    }
+
+    if (p === 'settings') {
+      loadSettingsPage();
+    }
+  }
+
+  async function loadSettingsPage() {
+    if (currentRole === 'staff') {
+      showToast('Settings are only available to admins');
+      showPage('queue');
+      return;
+    }
+
+    await loadDepartmentsForCounterForm();
+    await loadCountersSettings();
+  }
+
+  async function loadDepartmentsForCounterForm() {
+    const select = document.getElementById('counter-department');
+    if (!select) return;
+
+    select.innerHTML = `<option value="">Select department</option>`;
+
+    if (!departments || departments.length === 0) {
+      await fetchBootstrapData();
+    }
+
+    departments.forEach(dept => {
+      const option = document.createElement('option');
+      option.value = dept.id;
+      option.textContent = dept.name;
+      select.appendChild(option);
+    });
+  }
+
+  function getDepartmentOptions(selectedDepartmentId) {
+    return departments.map(dept => `
+    <option value="${dept.id}" ${Number(dept.id) === Number(selectedDepartmentId) ? 'selected' : ''}>
+      ${dept.name}
+    </option>
+  `).join('');
+  }
+
+  async function loadCountersSettings() {
+    const tbody = document.getElementById('settings-counters-tbody');
+    if (!tbody) return;
+
+    try {
+      const res = await fetch('/api/admin/counters');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load counters');
+      }
+
+      const countersList = data.counters || [];
+
+      if (!countersList.length) {
+        tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="padding: 16px; color: var(--text3);">
+            No counters configured yet.
+          </td>
+        </tr>
+      `;
+        return;
+      }
+
+      tbody.innerHTML = countersList.map(counter => `
+      <tr>
+        <td>
+          <input
+            type="text"
+            value="${counter.name || ''}"
+            id="counter-name-${counter.counter_id}"
+          />
+        </td>
+
+        <td>
+          <select id="counter-dept-${counter.counter_id}">
+            ${getDepartmentOptions(counter.department_id)}
+          </select>
+        </td>
+
+        <td>
+          <select id="counter-status-${counter.counter_id}">
+            <option value="open" ${counter.status === 'open' ? 'selected' : ''}>Open</option>
+            <option value="break" ${counter.status === 'break' ? 'selected' : ''}>Break</option>
+            <option value="closed" ${counter.status === 'closed' ? 'selected' : ''}>Closed</option>
+          </select>
+        </td>
+
+        <td>${counter.current_queue_code || 'None'}</td>
+
+        <td>
+          <div class="action-btns">
+            <button class="act-btn" onclick="saveCounter(${counter.counter_id})">
+              Save
+            </button>
+            <button class="act-btn del" onclick="deleteCounter(${counter.counter_id})">
+              Delete
+            </button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load counters');
+    }
+  }
+
+  function attachCounterForm() {
+    const form = document.getElementById('counter-form');
+    if (!form) return;
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+
+      const name = document.getElementById('counter-name').value.trim();
+      const departmentId = document.getElementById('counter-department').value;
+      const status = document.getElementById('counter-status').value;
+
+      if (!name || !departmentId) {
+        showToast('Please enter a counter name and department');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/admin/counters', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, departmentId, status })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to create counter');
+        }
+
+        form.reset();
+
+        await fetchBootstrapData();
+        renderCounters();
+        await loadDepartmentsForCounterForm();
+        await loadCountersSettings();
+
+        showToast('Counter created');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
+    });
+  }
+
+  async function saveCounter(counterId) {
+    const name = document.getElementById('counter-name-' + counterId).value.trim();
+    const departmentId = document.getElementById('counter-dept-' + counterId).value;
+    const status = document.getElementById('counter-status-' + counterId).value;
+
+    if (!name || !departmentId || !status) {
+      showToast('Counter fields cannot be empty');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/counters/' + counterId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, departmentId, status })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update counter');
+      }
+
+      await fetchBootstrapData();
+      renderCounters();
+      await loadCountersSettings();
+
+      showToast('Counter updated');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
+  }
+
+  async function deleteCounter(counterId) {
+    const ok = confirm('Delete this counter? This cannot be undone.');
+    if (!ok) return;
+
+    try {
+      const res = await fetch('/api/admin/counters/' + counterId, {
+        method: 'DELETE'
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete counter');
+      }
+
+      await fetchBootstrapData();
+      renderCounters();
+      await loadCountersSettings();
+
+      showToast('Counter deleted');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
+  }
+
+  window.saveCounter = saveCounter;
+  window.deleteCounter = deleteCounter;
+  window.loadCountersSettings = loadCountersSettings;
+  async function openDept(id, name) {
+    activeDept = id;
+    document.getElementById('active-dept-name').textContent = name;
+    showPage('queue');
+    try {
+      await fetchDepartmentQueues(activeDept);
+      await fetchDepartmentStats(activeDept);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load department data');
+    }
+    renderCounters();
+    renderNextList();
+    renderTable();
+    renderNowServingCard();
+    renderStats();
+    switchTab('main', document.querySelector('.tab-btn'));
+  }
+
+  function switchTab(tab, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+  }
+
 
   function recallQueue() {
-    showToast('Queue #0' + qNum + ' recalled — announcement sent');
+    showToast('Queue #' + String(qNum).padStart(3, '0') + ' recalled — announcement sent');
   }
 
-  function skipQueue() {
-    qNum++;
-    document.getElementById('q-number').textContent = '0' + qNum;
-    const p = patients.find(p => parseInt(p.q) === qNum);
-    if (p) {
-      document.getElementById('q-name').textContent = p.name;
-      document.getElementById('q-sub').textContent = p.gender + ' · ' + p.age + ' years';
-      const pc = document.getElementById('q-priority');
-      pc.className = 'priority-chip ' + p.priority;
-      pc.textContent = p.priority.charAt(0).toUpperCase() + p.priority.slice(1);
+  async function callNextPatient() {
+    if (!activeDept) {
+      showToast('No department selected');
+      return;
     }
-    showToast('Skipped to Queue #0' + qNum);
+
+    try {
+      const res = await fetch('/api/admin/next', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ department_id: activeDept })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to call next patient');
+      }
+
+      await fetchDepartmentQueues(activeDept);
+      await fetchDepartmentStats(activeDept);
+
+      renderCounters();
+      renderNextList();
+      renderTable();
+      renderNowServingCard();
+      renderStats();
+
+      if (data.next) {
+        showToast('Now serving ' + data.next.code);
+      } else {
+        showToast('No waiting patients in this department');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to call next patient');
+    }
   }
 
-  function callPatient(q) { showToast('Calling Queue #' + q + '…'); }
+  async function skipQueue() {
+    const serving = patients.find(p => p.status === 'serving');
 
-  function deletePatient(q) {
-    patients = patients.filter(p => p.q !== q);
-    renderTable();
-    renderNextList();
-    showToast('Patient #' + q + ' removed from queue');
+    if (!serving) {
+      showToast('No patient is currently serving');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/skip/' + serving.queueId, {
+        method: 'PATCH'
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to skip patient');
+      }
+
+      await fetchDepartmentQueues(activeDept);
+      await fetchDepartmentStats(activeDept);
+
+      renderCounters();
+      renderNextList();
+      renderTable();
+      renderNowServingCard();
+      renderStats();
+
+      showToast('Skipped ' + serving.q);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to skip patient');
+    }
   }
 
-  // ─── AI PANEL ───
-  function toggleAI() {
-    document.getElementById('ai-panel').classList.toggle('open');
+  function callPatient() {
+    callNextPatient();
   }
 
-  function acceptAI() {
-    const idx = patients.findIndex(p => p.q === '047');
-    if (idx > -1) {
-      patients[idx].priority = 'high';
-      const removed = patients.splice(idx, 1)[0];
-      const firstWaiting = patients.findIndex(p => p.status === 'waiting');
-      patients.splice(Math.max(firstWaiting, 0), 0, removed);
+  window.callNextPatient = callNextPatient;
+
+
+  async function deletePatient(queueId, qCode) {
+    if (!queueId) return;
+    try {
+      const res = await fetch('/api/admin/delete/' + queueId, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete queue entry');
+      await fetchDepartmentQueues(activeDept);
+      await fetchDepartmentStats(activeDept);
       renderTable();
       renderNextList();
+      renderNowServingCard();
+      renderStats();
+      showToast('Patient #' + qCode + ' removed from queue');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to remove patient from queue');
     }
+  }
+
+
+  function setCutoffTime(value) {
+    if (!value) return;
+    cutoffTime = value;
+    renderQueueControls();
+    showToast('Queue cutoff time set to ' + formatTime(cutoffTime));
+  }
+
+  async function closeQueue() {
+    queueOpen = true;
+    try {
+      const res = await fetch('/api/admin/queue-status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queueOpen: true })
+      });
+      if (!res.ok) throw new Error('Failed to open queue');
+    } catch (err) {
+      queueOpen = false;
+      console.error(err);
+      showToast('Failed to update queue status');
+      renderQueueControls();
+      return;
+    }
+    renderCounters();
+    renderQueueControls();
+    showToast('Queue is now open for new patients');
+  }
+
+  async function continueQueue() {
+    queueOpen = false;
+    try {
+      const res = await fetch('/api/admin/queue-status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queueOpen: false })
+      });
+      if (!res.ok) throw new Error('Failed to close queue');
+    } catch (err) {
+      queueOpen = true;
+      console.error(err);
+      showToast('Failed to update queue status');
+      renderQueueControls();
+      return;
+    }
+    renderCounters();
+    renderQueueControls();
+    showToast('Queue closed for new patients');
+  }
+
+  async function toggleDoctorAvailability(counterId, available) {
+    const idx = counters.findIndex(c => c.counterId === Number(counterId));
+    if (idx < 0) return;
+    const prev = counters[idx].available;
+    counters[idx].available = !!available;
+    try {
+      const res = await fetch('/api/admin/counters/' + counterId + '/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ available: !!available })
+      });
+      if (!res.ok) throw new Error('Failed to update counter status');
+    } catch (err) {
+      counters[idx].available = prev;
+      console.error(err);
+      showToast('Failed to update doctor availability');
+      renderCounters();
+      return;
+    }
+    renderCounters();
+    renderQueueControls();
+    showToast(counters[idx].doctor + (counters[idx].available ? ' is now available' : ' is on break'));
+  }
+
+
+  function toggleAI() { document.getElementById('ai-panel').classList.toggle('open'); }
+
+  document.getElementById('pwd-queue-tbody');
+  document.getElementById('regular-queue-tbody');
+
+  function acceptAI() {
     document.getElementById('ai-panel').classList.remove('open');
     document.getElementById('ai-ping').style.display = 'none';
-    showToast('Q-047 promoted to top of queue');
+    showToast('AI alert acknowledged');
   }
 
-  // ─── ADD PATIENT MODAL ───
+
   function openModal() { document.getElementById('modal-overlay').classList.add('open'); }
   function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+  function closeModalOuter(e) { if (e.target === document.getElementById('modal-overlay')) closeModal(); }
 
-  function closeModalOuter(e) {
-    if (e.target === document.getElementById('modal-overlay')) closeModal();
-  }
-
-  function addPatient() {
-    const first = document.getElementById('f-first').value.trim();
-    const last = document.getElementById('f-last').value.trim();
-    if (!first || !last) { alert('Please enter patient name.'); return; }
-
-    const gender = document.getElementById('f-gender').value;
-    const age = document.getElementById('f-age').value || '—';
+  async function addPatient() {
+    if (!queueOpen) { alert('Queue is currently closed. Please open the queue first.'); return; }
+    const name = document.getElementById('f-name').value.trim();
+    const sex = document.getElementById('f-sex').value;
+    const ageRaw = document.getElementById('f-age').value;
+    const contact = document.getElementById('f-contact').value.trim();
+    const reason = document.getElementById('f-reason').value.trim();
+    if (!name || !sex || !ageRaw || !contact || !reason) {
+      alert('Please complete all required fields: name, age, sex, contact number, and reason for visit.');
+      return;
+    }
+    const age = parseInt(ageRaw, 10);
+    if (Number.isNaN(age) || age < 0) { alert('Please enter a valid age.'); return; }
+    const queueType = document.getElementById('f-queue-type').value;
     const priority = document.getElementById('f-priority').value;
     const counter = document.getElementById('f-counter').value;
-    const maxQ = Math.max(...patients.map(p => parseInt(p.q)));
-    const newQ = String(maxQ + 1).padStart(3, '0');
-
-    patients.push({
-      q: newQ, name: first + ' ' + last,
-      gender, age: parseInt(age) || 0,
-      priority, status: 'waiting', counter,
-      wait: '~' + (patients.length * 5 + 5) + ' min'
-    });
-
-    renderTable();
-    renderNextList();
-    closeModal();
-    ['f-first', 'f-last', 'f-age', 'f-notes'].forEach(id => {
-      document.getElementById(id).value = '';
-    });
-    showToast('Patient ' + first + ' ' + last + ' added as Queue #' + newQ);
+    const complaint = document.getElementById('f-complaint').value.trim();
+    const conditions = document.getElementById('f-conditions').value.trim();
+    const activeDepartment = departments.find(d => String(d.id) === String(activeDept));
+    if (!activeDepartment) { alert('No active department selected.'); return; }
+    try {
+      const res = await fetch('/api/queue/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientName: name,
+          serviceType: activeDepartment.name,
+          concern: reason
+            + (complaint ? ' | Symptoms: ' + complaint : '')
+            + (conditions ? ' | Conditions: ' + conditions : ''),
+          queueType: queueType,
+          priority: priority
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create queue');
+      await fetchBootstrapData();
+      await fetchDepartmentQueues(activeDept);
+      renderDepts();
+      renderTable();
+      renderNextList();
+      renderNowServingCard();
+      closeModal();
+      ['f-name', 'f-age', 'f-contact', 'f-reason', 'f-complaint', 'f-conditions'].forEach(id => {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('f-sex').value = '';
+      document.getElementById('f-queue-type').value = 'regular';
+      showToast('Patient ' + name + ' added as Queue #' + (data.code || 'new'));
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to add patient to queue');
+    }
   }
 
-  // ─── NOTIFICATIONS ───
-  function toggleNotif() {
-    document.getElementById('notif-panel').classList.toggle('open');
-  }
+
+  function toggleNotif() { document.getElementById('notif-panel').classList.toggle('open'); }
 
   document.addEventListener('click', e => {
     if (!e.target.closest('#notif-btn') && !e.target.closest('#notif-panel')) {
@@ -284,21 +888,13 @@ if (isDashboard) {
     }
   });
 
-  // ─── TOAST ───
+
   function showToast(msg) {
     let t = document.getElementById('toast');
     if (!t) {
       t = document.createElement('div');
       t.id = 'toast';
-      t.style.cssText = [
-        'position:fixed', 'bottom:100px', 'left:50%',
-        'transform:translateX(-50%)',
-        'background:#111', 'color:#fff',
-        'padding:10px 20px', 'border-radius:8px',
-        'font-size:13px', 'font-weight:500',
-        'z-index:999', 'opacity:0', 'transition:opacity 0.2s',
-        'white-space:nowrap', 'box-shadow:0 4px 16px rgba(0,0,0,0.3)'
-      ].join(';');
+      t.style.cssText = 'position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:999;opacity:0;transition:opacity 0.2s;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
       document.body.appendChild(t);
     }
     t.textContent = msg;
@@ -307,7 +903,7 @@ if (isDashboard) {
     t._timeout = setTimeout(() => t.style.opacity = '0', 2800);
   }
 
-  // ─── EXPOSE GLOBALS (called from inline HTML onclick attributes) ───
+
   window.filterDepts = filterDepts;
   window.setFilter = setFilter;
   window.showPage = showPage;
@@ -318,6 +914,10 @@ if (isDashboard) {
   window.skipQueue = skipQueue;
   window.callPatient = callPatient;
   window.deletePatient = deletePatient;
+  window.toggleDoctorAvailability = toggleDoctorAvailability;
+  window.setCutoffTime = setCutoffTime;
+  window.continueQueue = continueQueue;
+  window.closeQueue = closeQueue;
   window.toggleAI = toggleAI;
   window.acceptAI = acceptAI;
   window.openModal = openModal;
@@ -326,17 +926,191 @@ if (isDashboard) {
   window.addPatient = addPatient;
   window.toggleNotif = toggleNotif;
 
-  // ─── INIT ───
-  renderDepts();
-  renderCounters();
-  renderNextList();
-  renderTable();
+
+  (async function initDashboard() {
+    try {
+      await loadCurrentUser();
+      await fetchBootstrapData();
+      await loadNotifications();
+      loadDepartmentsForStaffForm();
+      renderDepts();
+      applyRoleUI();
+      attachStaffForm();
+      attachCounterForm();
+      renderQueueControls();
+      if (departments.length > 0) {
+        activeDept = departments[0].id;
+        document.getElementById('active-dept-name').textContent = departments[0].name;
+
+        if (departments.length === 1) {
+          showPage('queue');
+        }
+
+        await fetchDepartmentQueues(activeDept);
+        await fetchDepartmentStats(activeDept);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load dashboard data');
+    }
+    renderCounters();
+    renderNextList();
+    renderTable();
+    renderNowServingCard();
+    renderStats();
+    renderQueueControls();
+  })();
+
+  async function loadStaffPage() {
+    await loadDepartmentsForStaffForm();
+    await loadStaffAccounts();
+  }
+
+  async function loadDepartmentsForStaffForm() {
+    const select = document.getElementById('staff-department');
+    if (!select) return;
+
+    select.innerHTML = `<option value="">Select department</option>`;
+
+    departments.forEach(dept => {
+      const option = document.createElement('option');
+      option.value = dept.id;
+      option.textContent = dept.name;
+      select.appendChild(option);
+    });
+  }
+
+  async function loadStaffAccounts() {
+    const tbody = document.getElementById('staff-tbody');
+    if (!tbody) return;
+
+    try {
+      const res = await fetch('/api/admin/staff');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load staff accounts');
+      }
+
+      if (!data.staff.length) {
+        tbody.innerHTML = `
+        <tr>
+          <td colspan="4" style="color: var(--text3); padding: 16px;">
+            No staff accounts found.
+          </td>
+        </tr>
+      `;
+        return;
+      }
+
+      tbody.innerHTML = data.staff.map(staff => `
+      <tr>
+        <td>${staff.full_name || 'Unnamed staff'}</td>
+        <td>${staff.username}</td>
+        <td>
+          <select onchange="updateStaffDepartment(${staff.user_id}, this.value)">
+            ${departments.map(dept => `
+              <option value="${dept.id}" ${Number(dept.id) === Number(staff.department_id) ? 'selected' : ''}>
+                ${dept.name}
+              </option>
+            `).join('')}
+          </select>
+        </td>
+        <td>
+          <button class="act-btn" onclick="updateStaffDepartment(${staff.user_id}, this.closest('tr').querySelector('select').value)">
+            Save
+          </button>
+        </td>
+      </tr>
+    `).join('');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load staff accounts');
+    }
+  }
+
+  function attachStaffForm() {
+    const form = document.getElementById('staff-form');
+    if (!form) return;
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+
+      const fullName = document.getElementById('staff-full-name').value.trim();
+      const contact = document.getElementById('staff-contact').value.trim();
+      const username = document.getElementById('staff-username').value.trim();
+      const password = document.getElementById('staff-password').value;
+      const departmentId = document.getElementById('staff-department').value;
+
+      if (!fullName || !username || !password || !departmentId) {
+        showToast('Please complete all required staff fields');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/admin/staff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName,
+            contact,
+            username,
+            password,
+            departmentId
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to create staff');
+        }
+
+        form.reset();
+        await loadStaffAccounts();
+        showToast('Staff account created');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
+    });
+  }
+
+  async function updateStaffDepartment(userId, departmentId) {
+    if (!departmentId) {
+      showToast('Please select a department');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/staff/' + userId + '/department', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ departmentId })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update department');
+      }
+
+      showToast('Staff department updated');
+      await loadStaffAccounts();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
+  }
+
+  window.updateStaffDepartment = updateStaffDepartment;
 
 
-  const lgt = document.getElementById('logoutBtn');
 
 
-  lgt.addEventListener('click', async e => {
+  const logout = document.getElementById('logoutBtn');
+
+  logout.addEventListener('click', async e => {
     e.preventDefault();
     try {
       await fetch('/logout', { method: 'POST', credentials: 'include' });
@@ -345,12 +1119,120 @@ if (isDashboard) {
       console.error('Logout failed', err);
     }
   });
-} // end isDashboard
+
+  async function loadCurrentUser() {
+    try {
+      const res = await fetch('/api/me');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load user');
+      }
+
+      const user = data.user;
+
+      const name = user.full_name || user.username || 'User';
+      const role = formatRoleLabel(user.role, user.department_name);
+      const initials = getInitials(name);
+
+      const avatarEl = document.getElementById('profile-avatar');
+      const nameEl = document.getElementById('profile-name');
+      const roleEl = document.getElementById('profile-role');
+
+      if (avatarEl) avatarEl.textContent = initials;
+      if (nameEl) nameEl.textContent = name;
+      if (roleEl) roleEl.textContent = role;
+    } catch (err) {
+      console.error(err);
+
+      const avatarEl = document.getElementById('profile-avatar');
+      const nameEl = document.getElementById('profile-name');
+      const roleEl = document.getElementById('profile-role');
+
+      if (avatarEl) avatarEl.textContent = '--';
+      if (nameEl) nameEl.textContent = 'User';
+      if (roleEl) roleEl.textContent = 'Signed in';
+    }
+  }
+
+  function getInitials(name) {
+    return String(name || 'User')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map(part => part[0])
+      .join('')
+      .toUpperCase();
+  }
+
+  function formatRoleLabel(role, departmentName) {
+    if (role === 'owner') return 'Owner';
+    if (role === 'admin') return 'Admin';
+    if (role === 'staff') return departmentName ? `Staff · ${departmentName}` : 'Staff';
+    return 'Patient';
+  }
+
+  async function loadNotifications() {
+    const list = document.getElementById('notif-list');
+    const dot = document.querySelector('.notif-dot');
+
+    if (!list) return;
+
+    try {
+      const res = await fetch('/api/admin/notifications');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load notifications');
+      }
+
+      const notifications = data.notifications || [];
+
+      if (dot) {
+        dot.style.display = notifications.length ? 'block' : 'none';
+      }
+
+      if (!notifications.length) {
+        list.innerHTML = `
+        <div class="notif-item">
+          <div class="notif-dot2"></div>
+          <div>
+            <div class="notif-text">No notifications yet.</div>
+            <div class="notif-time">Waiting for queue activity</div>
+          </div>
+        </div>
+      `;
+        return;
+      }
+
+      list.innerHTML = notifications.map(n => `
+      <div class="notif-item">
+        <div class="notif-dot2" style="background:${n.type === 'urgent' ? 'var(--red)' : 'var(--green)'}"></div>
+        <div>
+          <div class="notif-text">${n.text}</div>
+          <div class="notif-time">${n.time}</div>
+        </div>
+      </div>
+    `).join('');
+    } catch (err) {
+      console.error(err);
+      list.innerHTML = `
+      <div class="notif-item">
+        <div class="notif-dot2"></div>
+        <div>
+          <div class="notif-text">Failed to load notifications.</div>
+          <div class="notif-time">Please refresh the page</div>
+        </div>
+      </div>
+    `;
+    }
+  }
+}
 
 
-// ════════════════════════════════════════════════════════
-//  ORIGINAL: INDEX FLOW  (old landing / dashboard page)
-// ════════════════════════════════════════════════════════
+
+
+
 if (indexFlow) {
 
   const $ = sel => document.querySelector(sel);
@@ -497,12 +1379,9 @@ if (indexFlow) {
     };
   });
 
-} // end indexFlow
+}
 
 
-// ════════════════════════════════════════════════════════
-//  ORIGINAL: MOCK ADMIN FLOW
-// ════════════════════════════════════════════════════════
 if (mockAdmin) {
 
   const logout = document.getElementById('btn-logout');
@@ -521,7 +1400,7 @@ if (mockAdmin) {
     e.preventDefault();
     try {
       await fetch('/logout', { method: 'POST', credentials: 'include' });
-      window.location.href = '/login.html';
+      window.location.href = '/login';
     } catch (err) {
       console.error('Logout failed', err);
     }
@@ -560,12 +1439,10 @@ if (mockAdmin) {
     adminPoller = setInterval(() => loadQueue(departmentId), 30000);
   }
 
-} // end mockAdmin
+}
 
 
-// ════════════════════════════════════════════════════════
-//  ORIGINAL: PATIENT FLOW
-// ════════════════════════════════════════════════════════
+
 if (patientEl) {
 
   let departmentId;
@@ -588,7 +1465,7 @@ if (patientEl) {
     const data = await res.json();
     if (data.queued) {
       departmentId = data.department_id;
-      showQueueState(data.code, data.ahead);
+      showQueueState(data.code, data.ahead, patientName, serviceType);
       startPolling();
     } else {
       attachForm();
@@ -598,39 +1475,62 @@ if (patientEl) {
   function attachForm() {
     addQueueForm.addEventListener('submit', async e => {
       e.preventDefault();
-      const patientName = addQueueForm.name.value;
+
+      const patientName = addQueueForm.name.value.trim();
       const serviceType = addQueueForm.serviceType.value;
-      const concern = addQueueForm.concern.value;
+      const queueType = addQueueForm.queueType.value;
+      const concern = addQueueForm.concern.value.trim();
+
+      if (!patientName || !serviceType || !concern) {
+        showToast('Please complete the form');
+        return;
+      }
 
       try {
         const res = await fetch('/api/queue/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ patientName, serviceType, concern })
+          body: JSON.stringify({
+            patientName,
+            serviceType,
+            queueType,
+            priority: queueType === 'pwd' ? 'high' : 'medium',
+            concern
+          })
         });
+
         const data = await res.json();
 
-        if (!res.ok) {
-          showToast(data.error || 'Failed');
+        if (!res.ok || !data.success) {
+          showToast(data.error || 'Failed to join queue');
           return;
         }
 
         showToast(`Queued: ${data.code}`);
-        showQueueState(data.code, data.ahead);
+        showQueueState(data.code, data.ahead, patientName, serviceType);
         departmentId = data.department_id;
         startPolling();
 
       } catch (err) {
+        console.error(err);
         showToast('Server error');
       }
     });
   }
 
-  function showQueueState(code, ahead) {
+  function showQueueState(code, ahead, patientName = 'Joined', serviceType = '') {
     completeFormPrompt.classList.add('hidden');
     addQueueForm.classList.add('hidden');
+
     nowTicket.textContent = code;
-    nowName.textContent = 'Joined';
+    nowTicket.classList.remove('empty');
+
+    nowName.textContent = patientName;
+    nowName.style.opacity = '1';
+
+    const nowService = document.getElementById('now-service');
+    if (nowService) nowService.textContent = serviceType;
+
     aheadStatus.textContent = ahead;
   }
 
@@ -672,13 +1572,11 @@ if (patientEl) {
       e.preventDefault();
       try {
         await fetch('/logout', { method: 'POST', credentials: 'include' });
-        window.location.href = '/login.html';
+        window.location.href = '/login';
       } catch (err) {
         console.error('Logout failed', err);
       }
     });
   }
 
-} // end patientFlow
-
-
+} 
