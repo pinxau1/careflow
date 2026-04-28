@@ -14,18 +14,56 @@
       rel="stylesheet"
     />
   </head>
-  <body>
-    <form class="auth-main" id="signup-form">
-      <div class="auth-card" id="signup-card">
-        <div class="auth-logo">
+<body class="signup-page">
+  <form class="auth-main signup-shell" id="signup-form">
+    <section class="signup-hero" aria-label="CareFlow account overview">
+      <div class="signup-hero-inner">
+        <div class="auth-logo hero-logo">
           <span class="material-symbols-outlined">ecg_heart</span>
           <span>CareFlow</span>
         </div>
 
-        <h2>Create Account</h2>
-        <p class="auth-sub">Super Family Health Centers — Cebu</p>
+        <div class="signup-copy">
+          <span class="signup-kicker">Patient Access</span>
+          <h1>Create your CareFlow account.</h1>
+          <p>
+            Register once and use your account to join queues, receive updates, and manage clinic visits more conveniently.
+          </p>
+        </div>
 
+        <div class="signup-points">
+          <div>
+            <span class="material-symbols-outlined">verified_user</span>
+            <strong>Private by design</strong>
+            <small>Personal information is handled for proper clinic use only.</small>
+          </div>
 
+          <div>
+            <span class="material-symbols-outlined">notifications_active</span>
+            <strong>Queue updates</strong>
+            <small>Use your contact number for system alerts and recovery.</small>
+          </div>
+
+          <div>
+            <span class="material-symbols-outlined">speed</span>
+            <strong>Faster visits</strong>
+            <small>Reduce manual queueing and waiting uncertainty.</small>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="signup-panel">
+      <div class="auth-card" id="signup-card">
+        <div class="auth-logo signup-mobile-logo">
+          <span class="material-symbols-outlined">ecg_heart</span>
+          <span>CareFlow</span>
+        </div>
+
+        <div class="signup-heading">
+          <h2>Create Account</h2>
+          <p class="auth-sub">Super Family Health Centers, Cebu</p>
+        </div>
 
         <div class="form-section" id="form-section">
           <div class="form-section-label">Personal Information</div>
@@ -44,13 +82,12 @@
             </div>
           </div>
 
-
           <div class="input-group">
             <label for="signup-contact">Contact Number <span class="required">*</span></label>
             <div class="input-container" id="ic-contact">
               <span class="material-symbols-outlined">phone</span>
-              <input 
-                type="tel" 
+              <input
+                type="tel"
                 id="signup-contact"
                 name="contactNum"
                 pattern="^(\+63|0)9\d{9}$"
@@ -59,9 +96,7 @@
                 required
               />
             </div>
-            <small class="field-hint"
-              >Used for system alerts and account recovery</small
-            >
+            <small class="field-hint">Used for system alerts and account recovery</small>
           </div>
 
           <div class="form-divider"></div>
@@ -72,7 +107,6 @@
             <label for="signup-username">Username <span class="required">*</span></label>
             <div class="input-container" id="ic-username">
               <span class="material-symbols-outlined">person</span>
-
               <input
                 type="text"
                 id="signup-username"
@@ -84,9 +118,10 @@
             </div>
 
             <div class="field-feedback hidden" id="username-taken">
-              <span class="material-symbols-outlined">error</span> Username is
-              already taken.
+              <span class="material-symbols-outlined">error</span>
+              Username is already taken.
             </div>
+
             <div class="field-feedback feedback-ok hidden" id="username-ok">
               <span class="material-symbols-outlined">check_circle</span>
               Username is available.
@@ -105,11 +140,7 @@
                 autocomplete="new-password"
                 required
               />
-              <span
-                class="material-symbols-outlined pw-toggle"
-                id="toggle-signup-pw"
-                >visibility</span
-              >
+              <span class="material-symbols-outlined pw-toggle" id="toggle-signup-pw">visibility</span>
             </div>
 
             <div class="pw-strength-track hidden" id="pw-strength-track">
@@ -120,10 +151,9 @@
                 data-strength=""
               ></div>
             </div>
+
             <div class="pw-strength-label hidden" id="pw-strength-label"></div>
-            <small class="field-hint"
-              >Minimum 8 characters. Use letters, numbers, and symbols.</small
-            >
+            <small class="field-hint">Minimum 8 characters. Use letters, numbers, and symbols.</small>
           </div>
 
           <div class="input-group">
@@ -138,16 +168,12 @@
                 autocomplete="new-password"
                 required
               />
-              <span
-                class="material-symbols-outlined pw-toggle"
-                id="toggle-confirm-pw"
-                >visibility</span
-              >
+              <span class="material-symbols-outlined pw-toggle" id="toggle-confirm-pw">visibility</span>
             </div>
 
             <div class="field-feedback hidden" id="pw-mismatch">
-              <span class="material-symbols-outlined">error</span> Passwords do
-              not match.
+              <span class="material-symbols-outlined">error</span>
+              Passwords do not match.
             </div>
           </div>
         </div>
@@ -158,11 +184,11 @@
         </div>
 
         <p class="terms-note">
-          By creating an account, you are assured that your personal and patient information is handled with strict confidentiality and protected under
-          <strong>RA 10173</strong> (Data Privacy Act of 2012). The system follows secure data handling practices to ensure that your information is used only for proper medical and administrative purposes.
+          By creating an account, your personal and patient information is handled with confidentiality and protected under
+          <strong>RA 10173</strong> (Data Privacy Act of 2012).
         </p>
 
-        <button type="submit" class="auth-button" id="btn-signup" >
+        <button type="submit" class="auth-button" id="btn-signup">
           Create Account
         </button>
 
@@ -171,8 +197,9 @@
           <a href="login.html" class="auth-link">Sign in</a>
         </div>
       </div>
-    </form>
+    </section>
+  </form>
 
-    <script src="js/auth.js"></script>
-  </body>
+  <script src="js/auth.js"></script>
+</body>
 </html>

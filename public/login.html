@@ -1,65 +1,150 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CareFlow | Login</title>
-  <link rel="stylesheet" href="css/auth.css">
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/auth.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 </head>
-<body>
 
-<form class="auth-main" id="login-form">
-  <div class="auth-card" id="login-card">
+<body class="login-page">
+  <form class="auth-main login-shell" id="login-form">
+    <section class="login-hero" aria-label="CareFlow system overview">
+      <div class="hero-glow hero-glow-one"></div>
+      <div class="hero-glow hero-glow-two"></div>
 
-    <div class="auth-logo">
-      <span class="material-symbols-outlined">ecg_heart</span>
-      <span>CareFlow</span>
-    </div>
-
-    <h2>Welcome back</h2>
-    <p class="auth-sub">Super Family Health Centers, Cebu</p>
-
-    <div class="input-group">
-      <label for="login-username">Username</label>
-      <div class="input-container">
-        <span class="material-symbols-outlined">person</span>
-        <input type="text" id="login-username" name="username" placeholder="Enter your username" autocomplete="username" required>
+      <div class="hero-topline">
+        <span class="material-symbols-outlined">ecg_heart</span>
+        Healthcare Queue Management
       </div>
-    </div>
 
-    <div class="input-group">
-      <label for="login-password">Password</label>
-      <div class="input-container">
-        <span class="material-symbols-outlined">lock</span>
-        <input type="password" id="login-password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
-      
-        <span class="material-symbols-outlined pw-toggle" id="toggle-login-pw">visibility</span>
+      <div class="hero-copy">
+        <h1>Organized patient flow for faster clinic service.</h1>
+        <p>
+          CareFlow helps manage department queues, counters, and patient status in one secure system for Super Family Health Centers.
+        </p>
       </div>
-    </div>
 
+      <div class="hero-preview">
+        <div class="preview-header">
+          <div>
+            <span class="preview-label">Now Serving</span>
+            <strong>MED-024</strong>
+          </div>
+          <span class="preview-status">Live</span>
+        </div>
 
-    <div class="auth-error hidden" id="login-error">
-      <span class="material-symbols-outlined">error</span>
-      Incorrect username or password.
-    </div>
+        <div class="preview-list">
+          <div class="preview-row active">
+            <span>01</span>
+            <div>
+              <strong>Consultation</strong>
+              <small>Counter 2 active</small>
+            </div>
+            <b>12</b>
+          </div>
 
-    <button type="submit" class="auth-button" id="btn-login">Sign In</button>
+          <div class="preview-row">
+            <span>02</span>
+            <div>
+              <strong>Laboratory</strong>
+              <small>Average wait 8 min</small>
+            </div>
+            <b>7</b>
+          </div>
 
-    <div class="auth-switch">
-      New to Careflow?
-      <a href="signup.html" class="auth-link">Create an account</a>
-    </div>
+          <div class="preview-row">
+            <span>03</span>
+            <div>
+              <strong>Pharmacy</strong>
+              <small>Queue open</small>
+            </div>
+            <b>5</b>
+          </div>
+        </div>
+      </div>
 
-    <p class="auth-hint">
-      <span class="material-symbols-outlined">info</span>
-      Contact Family Care Clinic for concerns
-    </p>
+      <div class="hero-metrics">
+        <div>
+          <strong>3</strong>
+          <span>Departments</span>
+        </div>
+        <div>
+          <strong>24</strong>
+          <span>Active queues</span>
+        </div>
+        <div>
+          <strong>Secure</strong>
+          <span>Clinic access</span>
+        </div>
+      </div>
+    </section>
 
-  </div>
-</form>
+    <section class="login-panel">
+      <div class="auth-card" id="login-card">
+        <div class="auth-logo">
+          <span class="material-symbols-outlined">ecg_heart</span>
+          <span>CareFlow</span>
+        </div>
 
-<script src="js/auth.js"></script>
+        <div class="login-heading">
+          <h2>Welcome back</h2>
+          <p class="auth-sub">Super Family Health Centers, Cebu</p>
+        </div>
+
+        <div class="input-group">
+          <label for="login-username">Username</label>
+          <div class="input-container">
+            <span class="material-symbols-outlined">person</span>
+            <input
+              type="text"
+              id="login-username"
+              name="username"
+              placeholder="Enter your username"
+              autocomplete="username"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="login-password">Password</label>
+          <div class="input-container">
+            <span class="material-symbols-outlined">lock</span>
+            <input
+              type="password"
+              id="login-password"
+              name="password"
+              placeholder="Enter your password"
+              autocomplete="current-password"
+              required
+            />
+            <span class="material-symbols-outlined pw-toggle" id="toggle-login-pw">visibility</span>
+          </div>
+        </div>
+
+        <div class="auth-error hidden" id="login-error">
+          <span class="material-symbols-outlined">error</span>
+          Incorrect username or password.
+        </div>
+
+        <button type="submit" class="auth-button" id="btn-login">Sign In</button>
+
+        <div class="auth-switch">
+          New to CareFlow?
+          <a href="signup.html" class="auth-link">Create an account</a>
+        </div>
+
+        <p class="auth-hint">
+          <span class="material-symbols-outlined">info</span>
+          Contact Family Care Clinic for concerns
+        </p>
+      </div>
+    </section>
+  </form>
+
+  <script src="js/auth.js"></script>
 </body>
 </html>
