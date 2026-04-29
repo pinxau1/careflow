@@ -41,7 +41,7 @@ body {
   min-height: 100vh;
 }
 
-/* TOPBAR */
+
 .topbar {
   position: fixed;
   top: 0;
@@ -167,7 +167,7 @@ body {
   color: var(--text3);
 }
 
-/* SIDEBAR */
+
 .sidebar {
   position: fixed;
   left: 0;
@@ -231,7 +231,7 @@ body {
   z-index: 200;
 }
 
-/* MAIN */
+
 .main {
   margin-left: 62px;
   margin-top: 62px;
@@ -251,7 +251,7 @@ body {
   display: block;
 }
 
-/* DEPT PAGE */
+
 .page-header {
   margin-bottom: 22px;
 }
@@ -433,7 +433,7 @@ body {
   color: var(--text2);
 }
 
-/* QUEUE PAGE */
+
 .back-row {
   display: flex;
   align-items: center;
@@ -511,7 +511,7 @@ body {
   border-bottom-color: var(--green);
 }
 
-/* COUNTERS */
+
 .counters-row {
   display: flex;
   gap: 12px;
@@ -578,7 +578,7 @@ body {
   margin-top: 6px;
 }
 
-/* NOW SERVING + NEXT UP */
+
 .queue-main-row {
   display: grid;
   grid-template-columns: 1fr 300px;
@@ -780,7 +780,7 @@ body {
   margin-top: 1px;
 }
 
-/* STATS */
+
 .stats-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -848,7 +848,7 @@ body {
   color: var(--red);
 }
 
-/* QUEUE LINE TAB */
+
 .queue-line-header {
   display: flex;
   align-items: center;
@@ -1037,7 +1037,7 @@ body {
   background: var(--red-light);
 }
 
-/* AI BUBBLE */
+
 .ai-bubble-btn {
   position: fixed;
   bottom: 28px;
@@ -1088,7 +1088,7 @@ body {
   }
 }
 
-/* AI PANEL */
+
 .ai-panel {
   position: fixed;
   bottom: 88px;
@@ -1219,7 +1219,7 @@ body {
   background: var(--border);
 }
 
-/* MODAL */
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1375,7 +1375,7 @@ input::placeholder {
   background: var(--green-dark);
 }
 
-/* NOTIFICATIONS */
+
 .notif-panel {
   position: fixed;
   top: 62px;
@@ -1440,7 +1440,7 @@ input::placeholder {
   margin-top: 3px;
 }
 
-/* TOAST */
+
 #toast {
   position: fixed;
   bottom: 88px;

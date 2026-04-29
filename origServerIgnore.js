@@ -39,7 +39,7 @@ console.log("this is the right file. ");
 function reqLogin(req, res, next) {
   if (!req.session || !req.session.uid) {
     return res.redirect('/login');
-    // return res.status(401).json({ error: 'Unauthorized' });
+    
   }
   next();
 }

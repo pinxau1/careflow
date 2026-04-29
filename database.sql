@@ -5,7 +5,7 @@ CREATE TABLE users (
   username VARCHAR(255) NOT NULL UNIQUE,
   contact_number VARCHAR(50) UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
-  role ENUM('admin', 'patient') NOT NULL DEFAULT 'patient',
+  role ENUM('owner', 'admin', 'staff', 'patient') NOT NULL DEFAULT 'patient',
   full_name VARCHAR(150),
   age INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -15,6 +15,9 @@ CREATE TABLE departments (
   department_id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(50) NOT NULL UNIQUE,
   code VARCHAR(10) NOT NULL UNIQUE,
+  queue_status ENUM('open','pause','closed') DEFAULT 'open',
+  pause_message VARCHAR(255) NULL,
+  paused_until DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -30,6 +33,7 @@ CREATE TABLE counters (
   current_queue_id INT NULL,
 
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME NULL,
 
   FOREIGN KEY (department_id) REFERENCES departments(department_id)
     ON DELETE CASCADE
@@ -65,18 +69,35 @@ CREATE TABLE queues (
   FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
+CREATE INDEX idx_counters_current_queue ON counters(current_queue_id);
+
+ALTER TABLE counters
+  ADD CONSTRAINT fk_counters_current_queue
+  FOREIGN KEY (current_queue_id) REFERENCES queues(queue_id)
+  ON DELETE SET NULL;
+
 CREATE TABLE queue_logs (
   log_id INT AUTO_INCREMENT PRIMARY KEY,
 
   queue_id INT NOT NULL,
   actor_user_id INT NULL,
 
-  action ENUM('created','called','skipped','no_show','void','recall') NOT NULL,
+  action ENUM(
+    'created','called','skipped','no_show','void','recall',
+    'served','transferred','assigned_counter'
+  ) NOT NULL,
+  counter_id INT NULL,
+  from_department_id INT NULL,
+  to_department_id INT NULL,
+  notes VARCHAR(255) NULL,
 
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
   FOREIGN KEY (queue_id) REFERENCES queues(queue_id) ON DELETE CASCADE,
-  FOREIGN KEY (actor_user_id) REFERENCES users(user_id) ON DELETE SET NULL
+  FOREIGN KEY (actor_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+  FOREIGN KEY (counter_id) REFERENCES counters(counter_id) ON DELETE SET NULL,
+  FOREIGN KEY (from_department_id) REFERENCES departments(department_id) ON DELETE SET NULL,
+  FOREIGN KEY (to_department_id) REFERENCES departments(department_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 
@@ -111,6 +132,12 @@ CREATE TABLE system_settings (
 CREATE INDEX idx_queue_status ON queues(status);
 CREATE INDEX idx_queue_user ON queues(user_id);
 CREATE INDEX idx_queue_created ON queues(created_at);
+CREATE INDEX idx_queue_department_status ON queues(department_id, status);
 
 CREATE INDEX idx_logs_queue ON queue_logs(queue_id);
 CREATE INDEX idx_logs_actor ON queue_logs(actor_user_id);
+CREATE INDEX idx_logs_counter ON queue_logs(counter_id);
+CREATE INDEX idx_logs_from_department ON queue_logs(from_department_id);
+CREATE INDEX idx_logs_to_department ON queue_logs(to_department_id);
+CREATE INDEX idx_logs_created ON queue_logs(created_at);
+CREATE INDEX idx_logs_action ON queue_logs(action);

@@ -1,28 +1,28 @@
-// ─────────────────────────────────────────────
-//  CAREFLOW — ADMIN DASHBOARD SCRIPT
-//  Covers the refactored CareFlow UI (index.html)
-//  and preserves all original API/backend logic.
-// ─────────────────────────────────────────────
 
-// ─── GUARD: only run dashboard logic on the admin page ───
+
+
+
+
+
+
 const indexFlow = document.getElementById('indexFlow');
 const patientEl = document.getElementById('patientFlow');
 const mockAdmin = document.getElementById('mockFlow');
 
 
-// ════════════════════════════════════════════════════════
-//  ADMIN DASHBOARD  (new CareFlow UI — index.html)
-// ════════════════════════════════════════════════════════
-// The new UI does not use an indexFlow wrapper div,
-// so we detect it by the presence of #dept-grid instead.
+
+
+
+
+
 const isDashboard = !!document.getElementById('dept-grid');
 
 if (isDashboard) {
 
-  // ─── DATA ───
-  // In production these would be fetched from your API.
-  // The shape is kept identical to the original so your
-  // backend calls can replace these arrays directly.
+  
+  
+  
+  
   const departments = [
     { id: 'genmed', name: 'Gen Med / Internal Medicine', type: 'patient-care', queue: 18, color: '#e8f7f2', emoji: '🏥' },
     { id: 'birthing', name: 'Birthing / OB-GYN', type: 'patient-care', queue: 7, color: '#fef3f2', emoji: '🤱' },
@@ -55,7 +55,7 @@ if (isDashboard) {
   let activeFilter = 'all';
   let searchVal = '';
 
-  // ─── DEPARTMENT GRID ───
+  
   function renderDepts() {
     const grid = document.getElementById('dept-grid');
     const filtered = departments.filter(d => {
@@ -89,7 +89,7 @@ if (isDashboard) {
     renderDepts();
   }
 
-  // ─── PAGE NAVIGATION ───
+  
   function showPage(p) {
     document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
     document.getElementById('page-' + p).classList.add('active');
@@ -110,7 +110,7 @@ if (isDashboard) {
     switchTab('main', document.querySelector('.tab-btn'));
   }
 
-  // ─── TABS ───
+  
   function switchTab(tab, btn) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -118,7 +118,7 @@ if (isDashboard) {
     document.getElementById('tab-' + tab).classList.add('active');
   }
 
-  // ─── COUNTER CARDS ───
+  
   function renderCounters() {
     const row = document.getElementById('counters-row');
     row.innerHTML = counters.map((c, i) => `
@@ -137,7 +137,7 @@ if (isDashboard) {
     el.classList.add('active-counter');
   }
 
-  // ─── NEXT-UP LIST ───
+  
   function renderNextList() {
     const waiting = patients.filter(p => p.status === 'waiting').slice(0, 4);
     document.getElementById('next-list').innerHTML = waiting.map(p => `
@@ -152,7 +152,7 @@ if (isDashboard) {
     `).join('');
   }
 
-  // ─── QUEUE TABLE ───
+  
   function renderTable() {
     const priorityOrder = { high: 0, medium: 1, low: 2 };
     const sorted = [...patients].sort((a, b) => {
@@ -186,7 +186,7 @@ if (isDashboard) {
     `).join('');
   }
 
-  // ─── QUEUE ACTIONS ───
+  
   let qNum = 42;
 
   function recallQueue() {
@@ -216,7 +216,7 @@ if (isDashboard) {
     showToast('Patient #' + q + ' removed from queue');
   }
 
-  // ─── AI PANEL ───
+  
   function toggleAI() {
     document.getElementById('ai-panel').classList.toggle('open');
   }
@@ -236,7 +236,7 @@ if (isDashboard) {
     showToast('Q-047 promoted to top of queue');
   }
 
-  // ─── ADD PATIENT MODAL ───
+  
   function openModal() { document.getElementById('modal-overlay').classList.add('open'); }
   function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
 
@@ -272,7 +272,7 @@ if (isDashboard) {
     showToast('Patient ' + first + ' ' + last + ' added as Queue #' + newQ);
   }
 
-  // ─── NOTIFICATIONS ───
+  
   function toggleNotif() {
     document.getElementById('notif-panel').classList.toggle('open');
   }
@@ -284,7 +284,7 @@ if (isDashboard) {
     }
   });
 
-  // ─── TOAST ───
+  
   function showToast(msg) {
     let t = document.getElementById('toast');
     if (!t) {
@@ -307,7 +307,7 @@ if (isDashboard) {
     t._timeout = setTimeout(() => t.style.opacity = '0', 2800);
   }
 
-  // ─── EXPOSE GLOBALS (called from inline HTML onclick attributes) ───
+  
   window.filterDepts = filterDepts;
   window.setFilter = setFilter;
   window.showPage = showPage;
@@ -326,7 +326,7 @@ if (isDashboard) {
   window.addPatient = addPatient;
   window.toggleNotif = toggleNotif;
 
-  // ─── INIT ───
+  
   renderDepts();
   renderCounters();
   renderNextList();
@@ -345,12 +345,12 @@ if (isDashboard) {
       console.error('Logout failed', err);
     }
   });
-} // end isDashboard
+} 
 
 
-// ════════════════════════════════════════════════════════
-//  ORIGINAL: INDEX FLOW  (old landing / dashboard page)
-// ════════════════════════════════════════════════════════
+
+
+
 if (indexFlow) {
 
   const $ = sel => document.querySelector(sel);
@@ -497,12 +497,12 @@ if (indexFlow) {
     };
   });
 
-} // end indexFlow
+} 
 
 
-// ════════════════════════════════════════════════════════
-//  ORIGINAL: MOCK ADMIN FLOW
-// ════════════════════════════════════════════════════════
+
+
+
 if (mockAdmin) {
 
   const logout = document.getElementById('btn-logout');
@@ -560,12 +560,12 @@ if (mockAdmin) {
     adminPoller = setInterval(() => loadQueue(departmentId), 30000);
   }
 
-} // end mockAdmin
+} 
 
 
-// ════════════════════════════════════════════════════════
-//  ORIGINAL: PATIENT FLOW
-// ════════════════════════════════════════════════════════
+
+
+
 if (patientEl) {
 
   let departmentId;
@@ -679,6 +679,6 @@ if (patientEl) {
     });
   }
 
-} // end patientFlow
+} 
 
 

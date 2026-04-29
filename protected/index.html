@@ -276,13 +276,28 @@
             </svg>
             Departments
         </button>
-        <div class="dept-badge">
-            <span class="dept-badge-dot"></span>
-            <span id="active-dept-name">No department selected</span>
-        </div>
-        </div>
-    
-        <div class="tabs">
+	        <div class="dept-badge">
+	            <span class="dept-badge-dot"></span>
+	            <span id="active-dept-name">No department selected</span>
+	        </div>
+	        </div>
+
+	        <div class="queue-admin-tools">
+	          <div class="queue-status-controls">
+	            <label for="dept-status-select">Department Status</label>
+	            <select id="dept-status-select">
+	              <option value="open">Open</option>
+	              <option value="pause">Paused</option>
+	              <option value="closed">Closed</option>
+	            </select>
+	            <input type="text" id="dept-pause-message" placeholder="Pause message">
+	            <input type="datetime-local" id="dept-paused-until">
+	            <button class="act-btn" onclick="saveDepartmentStatus()">Save Status</button>
+	          </div>
+	          <a class="act-btn" href="/display" target="_blank">Open Display</a>
+	        </div>
+	    
+	        <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('main',this)">Queue Management</button>
         <button class="tab-btn" onclick="switchTab('line',this)">Queue Line</button>
         </div>
@@ -303,11 +318,14 @@
             </div>
             <div class="queue-divider"></div>
             <div class="queue-actions-section">
-                <button class="btn-recall" onclick="callNextPatient()">
-                  Call Next
-                </button>
-                <button class="btn-skip" onclick="skipQueue()">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 17 12 12 5 7"/><polyline points="14 17 21 12 14 7"/></svg>
+	            <button class="btn-recall" onclick="callNextPatient()">
+	                  Call Next
+	                </button>
+	                <button class="btn-skip" onclick="recallCurrentQueue()">
+	                Recall
+	                </button>
+	                <button class="btn-skip" onclick="skipQueue()">
+	                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 17 12 12 5 7"/><polyline points="14 17 21 12 14 7"/></svg>
                 Skip
                 </button>
             </div>
@@ -367,10 +385,52 @@
                 <div class="stat-sub dn" id="stat-wait-sub">↑ +8% from yesterday</div>
             </div>
         </div>
-        </div>
+	    </div>
+
+	    <div class="modal-overlay" id="transfer-modal-overlay" onclick="closeTransferModalOuter(event)">
+	    <div class="modal">
+	        <div class="modal-header">
+	        <span class="modal-title">Transfer Queue</span>
+	        <button class="modal-close" onclick="closeTransferModal()">×</button>
+	        </div>
+	        <div class="modal-body">
+	        <div class="form-row">
+	            <div class="form-group full">
+	            <label for="transfer-department">Target Department</label>
+	            <select id="transfer-department"></select>
+	            </div>
+	        </div>
+	        <div class="form-row">
+	            <div class="form-group full">
+	            <label for="transfer-notes">Notes</label>
+	            <input type="text" id="transfer-notes" placeholder="Reason for transfer">
+	            </div>
+	        </div>
+	        </div>
+	        <div class="modal-footer">
+	        <button class="btn-cancel" onclick="closeTransferModal()">Cancel</button>
+	        <button class="btn-submit" onclick="submitTransfer()">Transfer</button>
+	        </div>
+	    </div>
+	    </div>
+
+	    <div class="modal-overlay" id="history-modal-overlay" onclick="closeHistoryModalOuter(event)">
+	    <div class="modal">
+	        <div class="modal-header">
+	        <span class="modal-title">Queue History</span>
+	        <button class="modal-close" onclick="closeHistoryModal()">×</button>
+	        </div>
+	        <div class="modal-body">
+	        <div id="history-list" class="history-list">Loading history...</div>
+	        </div>
+	        <div class="modal-footer">
+	        <button class="btn-submit" onclick="closeHistoryModal()">Close</button>
+	        </div>
+	    </div>
+	    </div>
 
 
-    
+	    
         <div class="tab-content" id="tab-line">
         <div class="queue-line-header">
             <div class="queue-line-title">All Patients<span style="color:var(--text3);font-weight:400;font-size:13px" id="line-count"></span></div>

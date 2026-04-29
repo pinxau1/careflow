@@ -7,58 +7,100 @@
 }
 
 :root {
-  --bg: #f6f8f6;
-  --surface: #ffffff;
-  --surface2: #eef2ee;
-  --border: #dde6de;
-  --text: #1c261e;
-  --text-muted: #6b7a6d;
-  --accent: #6aaa82;
-  --accent-light: #e6f4ec;
-  --accent-dark: #4a8c64;
-  --green: #3a8c5c;
-  --green-light: #d8f0e4;
-  --blue: #1a4f8a;
-  --blue-light: #daeaf8;
-  --font: "Inter", system-ui, sans-serif;
+  --bg: #eef4f2;
+  --bg-deep: #dcebe5;
+  --surface: rgba(255, 255, 255, 0.88);
+  --surface-solid: #ffffff;
+  --surface2: #f2f7f5;
+  --border: rgba(32, 75, 58, 0.14);
+
+  --text: #17231d;
+  --text-muted: #6b7c72;
+
+  --accent: #4f9f72;
+  --accent-light: #e7f5ed;
+  --accent-dark: #2f7652;
+
+  --green: #2f8f5d;
+  --green-light: #dcf3e7;
+
+  --blue: #245c91;
+  --blue-light: #e1eef9;
+
+  --danger: #b32626;
+  --danger-light: #fde8e8;
+
+  --warning: #c47a1e;
+  --warning-light: #fff1dc;
+
+  --shadow-sm: 0 8px 24px rgba(18, 45, 32, 0.06);
+  --shadow-md: 0 18px 45px rgba(18, 45, 32, 0.1);
+  --shadow-lg: 0 28px 70px rgba(18, 45, 32, 0.14);
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+
+  --font: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   font-family: var(--font);
-  background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  background: linear-gradient(135deg, var(--bg), var(--bg-deep));
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
 }
 
 header {
-  border-bottom: 1.5px solid var(--border);
+  height: 72px;
   padding: 0 2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.78);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(18px);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20;
 }
 
 .logo {
   font-size: 20px;
   font-weight: 800;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.7px;
+  color: var(--accent-dark);
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--accent-dark);
 }
 
-aside {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.logo::before {
+  content: "";
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(79, 159, 114, 0.95), rgba(47, 118, 82, 0.95)),
+    var(--accent);
+  box-shadow: 0 10px 24px rgba(47, 118, 82, 0.28);
 }
 
 .header-right {
@@ -68,362 +110,488 @@ aside {
 }
 
 .btn-logout {
-  padding: 8px 16px;
-  background: none;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  font-family: var(--font);
-  font-size: 13px;
-  font-weight: 600;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
   color: var(--text-muted);
-  cursor: pointer;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
   transition:
-    background 0.15s,
-    color 0.15s,
-    border-color 0.15s;
+    background 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
 }
 
 .btn-logout:hover {
-  background: #fde8e8;
-  color: #b32626;
-  border-color: #f5c0c0;
+  background: var(--danger-light);
+  color: var(--danger);
+  border-color: rgba(179, 38, 38, 0.24);
+  transform: translateY(-1px);
 }
 
-main {
-  display: grid;
-  grid-template-columns: 360px 1fr;
-  max-width: 1200px;
+main,
+#patientFlow {
   width: 100%;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 2rem;
-  gap: 2rem;
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 1.5rem;
   align-items: start;
 }
 
-.serving-panel {
+aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 96px;
+}
+
+.serving-panel,
+.log-card,
+.add-card,
+.queue-card {
   background: var(--surface);
-  color: var(--text-muted);
-  border: 1.5px solid var(--border);
-  border-radius: 16px;
-  padding: 2rem;
-  top: 80px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(18px);
+}
+
+.serving-panel {
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.serving-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  height: 7px;
+  background: linear-gradient(90deg, var(--accent), #7fbea0, #245c91);
 }
 
 .serving-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  opacity: 1;
-  margin-bottom: 1rem;
   color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  margin-bottom: 1.2rem;
 }
 
 .ticket-number {
-  font-size: 72px;
+  color: var(--accent-dark);
+  font-size: clamp(56px, 7vw, 82px);
   font-weight: 800;
-  line-height: 1;
-  letter-spacing: 3px;
-  margin-bottom: 0.5rem;
-  transition: all 0.3s ease;
-  color: var(--text-muted);
+  line-height: 0.95;
+  letter-spacing: -3px;
+  margin-bottom: 0.7rem;
+  transition:
+    color 0.25s ease,
+    opacity 0.25s ease,
+    transform 0.25s ease;
 }
 
 .ticket-number.empty {
-  opacity: 0.3;
-  color: var(--text);
+  color: rgba(23, 35, 29, 0.24);
+  opacity: 1;
 }
 
 .ticket-number.general {
   color: var(--blue);
 }
+
 .ticket-number.support {
   color: var(--green);
 }
+
 .ticket-number.priority {
-  color: #c47a1e;
+  color: var(--warning);
 }
+
 .ticket-number.complaint {
-  color: #b32626;
+  color: var(--danger);
 }
 
 .serving-name {
-  font-size: 22px;
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-  min-height: 30px;
-  transition: all 0.3s ease;
   color: var(--text);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  min-height: 28px;
+  margin-bottom: 0.35rem;
+}
+
+#now-name {
+  opacity: 1 !important;
 }
 
 .serving-service {
+  color: var(--text-muted);
   font-size: 13px;
-  font-weight: 500;
-  opacity: 0.5;
+  font-weight: 600;
   min-height: 20px;
-  color: var(--text);
 }
 
 .serving-divider {
   height: 1px;
   background: var(--border);
-  margin: 1.5rem 0;
+  margin: 1.4rem 0;
 }
 
 .wait-info {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 1.5rem;
+  gap: 0.8rem;
 }
 
 .wait-stat {
-  background: var(--surface2);
-  border-radius: 10px;
-  padding: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(242, 247, 245, 0.96));
+  border: 1px solid rgba(32, 75, 58, 0.1);
+  border-radius: var(--radius-md);
+  padding: 1rem;
 }
 
 .wait-stat-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
   color: var(--text-muted);
-  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
 }
 
 .wait-stat-value {
-  font-size: 20px;
-  font-weight: 700;
   color: var(--text);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.log-card {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.queue-header {
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.clinic-status-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.clinic-status-badge {
+  width: fit-content;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--green);
+  background: var(--green-light);
+  border: 1px solid rgba(47, 143, 93, 0.16);
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+}
+
+.log-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 4px rgba(47, 143, 93, 0.12);
 }
 
 .right-panel {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
+  min-width: 0;
 }
 
 .add-card {
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 16px;
-  padding: 1.5rem;
+  border-radius: var(--radius-lg);
+  padding: 1.4rem;
 }
 
 .card-title {
-  font-size: 11px;
-  font-weight: 700;
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 800;
   letter-spacing: 1.5px;
-  color: var(--text-muted);
   text-transform: uppercase;
   margin-bottom: 1rem;
 }
 
 .form-row {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 10px;
+  grid-template-columns: 1.2fr 1fr 0.8fr auto;
+  gap: 0.9rem;
   align-items: end;
+}
+
+.field {
+  min-width: 0;
 }
 
 .field--full {
   grid-column: 1 / -1;
 }
 
-.field--full textarea,
-textarea#concern {
-  width: 100%;
-  padding: 10px 14px;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  font-family: var(--font);
-  font-size: 14px;
-  background: var(--bg);
-  color: var(--text);
-  outline: none;
-  resize: vertical;
-  min-height: 80px;
-  transition: border-color 0.15s;
-  line-height: 1.5;
-}
-
-.field--full textarea:focus,
-textarea#concern:focus {
-  border-color: var(--accent);
-}
-
+.field label,
 .field--full label {
   display: block;
-  font-size: 12px;
-  font-weight: 500;
   color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.field label {
-  display: block;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: 6px;
+  font-weight: 700;
+  margin-bottom: 0.45rem;
 }
 
 .field input,
-.field select {
+.field select,
+.field--full textarea,
+textarea#concern {
   width: 100%;
-  padding: 10px 14px;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  font-family: var(--font);
-  font-size: 14px;
-  background: var(--bg);
+  min-height: 44px;
   color: var(--text);
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid var(--border);
+  border-radius: 14px;
   outline: none;
-  transition: border-color 0.15s;
+  padding: 0.75rem 0.9rem;
+  font-size: 14px;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.field input::placeholder,
+.field--full textarea::placeholder,
+textarea#concern::placeholder {
+  color: rgba(107, 124, 114, 0.72);
+}
+
+.field select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2.3rem;
+}
+
+.field--full textarea,
+textarea#concern {
+  resize: vertical;
+  min-height: 92px;
+  line-height: 1.5;
 }
 
 .field input:focus,
-.field select:focus {
-  border-color: var(--accent);
+.field select:focus,
+.field--full textarea:focus,
+textarea#concern:focus {
+  background: var(--surface-solid);
+  border-color: rgba(79, 159, 114, 0.72);
+  box-shadow: 0 0 0 4px rgba(79, 159, 114, 0.12);
 }
 
 .btn-add {
-  padding: 10px 20px;
-  background: var(--accent);
-  color: white;
+  height: 44px;
+  padding: 0 1.25rem;
   border: none;
-  border-radius: 8px;
-  font-family: var(--font);
+  border-radius: 14px;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  box-shadow: 0 12px 28px rgba(47, 118, 82, 0.26);
   font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
+  font-weight: 800;
   white-space: nowrap;
   transition:
-    background 0.15s,
-    transform 0.1s;
-  height: 42px;
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    filter 0.18s ease;
 }
 
 .btn-add:hover {
-  background: var(--accent-dark);
+  filter: brightness(1.02);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 34px rgba(47, 118, 82, 0.32);
 }
+
 .btn-add:active {
-  transform: scale(0.97);
+  transform: translateY(0) scale(0.98);
 }
 
 .queue-card {
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
-.queue-header {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.queue-card .queue-header {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(242, 247, 245, 0.72));
 }
 
 .queue-list {
   list-style: none;
+  max-height: calc(100vh - 320px);
+  overflow: auto;
+}
+
+.queue-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.queue-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.queue-list::-webkit-scrollbar-thumb {
+  background: rgba(47, 118, 82, 0.18);
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.8);
 }
 
 .queue-item {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 14px 1.5rem;
-  border-bottom: 1px solid var(--surface2);
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(32, 75, 58, 0.08);
+  background: rgba(255, 255, 255, 0.34);
+  animation: slideIn 0.22s ease;
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
 }
 
 .queue-item:last-child {
   border-bottom: none;
 }
+
 .queue-item:hover {
-  background: var(--bg);
+  background: rgba(231, 245, 237, 0.58);
 }
 
 .ticket-badge {
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--surface2);
-  border-radius: 6px;
-  padding: 4px 9px;
-  min-width: 44px;
+  min-width: 54px;
   text-align: center;
-  color: var(--text-muted);
   flex-shrink: 0;
+  color: var(--accent-dark);
+  background: var(--accent-light);
+  border: 1px solid rgba(79, 159, 114, 0.14);
+  border-radius: 999px;
+  padding: 0.4rem 0.65rem;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .service-pill {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 20px;
   flex-shrink: 0;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .service-pill.general {
   background: var(--blue-light);
   color: var(--blue);
 }
+
 .service-pill.support {
   background: var(--green-light);
   color: var(--green);
 }
+
 .service-pill.priority {
-  background: var(--accent-light);
-  color: var(--accent-dark);
+  background: var(--warning-light);
+  color: var(--warning);
 }
+
 .service-pill.complaint {
-  background: #fde8e8;
-  color: #b32626;
+  background: var(--danger-light);
+  color: var(--danger);
 }
 
 .empty-state {
+  min-height: 210px;
   padding: 3rem 1.5rem;
-  text-align: center;
   color: var(--text-muted);
+  text-align: center;
+  display: grid;
+  place-items: center;
 }
 
 .empty-icon {
   font-size: 40px;
   margin-bottom: 1rem;
-  opacity: 0.3;
+  opacity: 0.34;
 }
 
 .empty-state p {
   font-size: 14px;
+  line-height: 1.5;
+}
+
+.clear-btn {
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  border-radius: 999px;
+  padding: 0.45rem 0.7rem;
+  font-size: 11px;
+  font-weight: 800;
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+
+.clear-btn:hover {
+  background: var(--danger-light);
+  transform: translateY(-1px);
 }
 
 #toast {
   position: fixed;
-  bottom: 2rem;
   left: 50%;
-  transform: translateX(-50%) translateY(100px);
-  background: var(--text);
-  color: var(--bg);
-  padding: 12px 20px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  transition: transform 0.3s ease;
+  bottom: 2rem;
+  transform: translateX(-50%) translateY(120px);
   z-index: 100;
+  max-width: min(92vw, 520px);
+  color: #ffffff;
+  background: rgba(23, 35, 29, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px);
+  padding: 0.85rem 1.1rem;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
+  transition: transform 0.28s ease;
 }
 
 #toast.show {
@@ -432,75 +600,478 @@ textarea#concern:focus {
 
 footer {
   text-align: center;
-  padding: 1.25rem;
-  font-size: 11px;
-  font-weight: 500;
+  padding: 1rem 1.25rem;
   color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.62);
   border-top: 1px solid var(--border);
-  background: var(--surface);
+  backdrop-filter: blur(16px);
+  font-size: 11px;
+  font-weight: 700;
 }
 
-.log-card {
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 16px;
-  overflow: hidden;
+.hidden {
+  display: none !important;
 }
 
-.log-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-@media (max-width: 768px) {
-  main {
+@media (max-width: 1050px) {
+  main,
+  #patientFlow {
+    grid-template-columns: 320px minmax(0, 1fr);
+    padding: 1.4rem;
+    gap: 1.2rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .btn-add {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
+@media (max-width: 820px) {
+  header {
+    height: auto;
+    min-height: 66px;
+    padding: 0.85rem 1rem;
+    gap: 1rem;
+  }
+
+  .logo {
+    font-size: 17px;
+  }
+
+  .logo::before {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+  }
+
+  main,
+  #patientFlow {
     grid-template-columns: 1fr;
     padding: 1rem;
   }
-  .serving-panel {
+
+  aside {
     position: static;
   }
+
+  .serving-panel {
+    padding: 1.4rem;
+  }
+
+  .right-panel {
+    gap: 1rem;
+  }
+
+  .queue-list {
+    max-height: none;
+  }
+}
+
+@media (max-width: 560px) {
+  body {
+    background: linear-gradient(135deg, var(--bg), var(--bg-deep));
+  }
+
+  header {
+    align-items: flex-start;
+  }
+
+  .header-right {
+    margin-left: auto;
+  }
+
+  .btn-logout {
+    padding: 0.65rem 0.85rem;
+    font-size: 12px;
+  }
+
+  main,
+  #patientFlow {
+    padding: 0.75rem;
+    gap: 0.85rem;
+  }
+
+  .serving-panel,
+  .add-card,
+  .queue-card,
+  .log-card {
+    border-radius: 18px;
+  }
+
+  .ticket-number {
+    font-size: 54px;
+    letter-spacing: -2px;
+  }
+
+  .serving-name {
+    font-size: 19px;
+  }
+
+  .wait-info {
+    grid-template-columns: 1fr;
+  }
+
   .form-row {
     grid-template-columns: 1fr;
   }
-  .ticket-number {
-    font-size: 56px;
+
+  .add-card {
+    padding: 1rem;
+  }
+
+  .queue-header {
+    padding: 1rem;
+  }
+
+  .queue-item {
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.95rem 1rem;
+  }
+
+  .ticket-badge {
+    min-width: 48px;
+  }
+
+  #toast {
+    bottom: 1rem;
+    border-radius: 16px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  footer {
+    padding: 0.85rem 1rem;
+    font-size: 10px;
+  }
+}
+.dept-status-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+
+.dept-status-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.dept-status-list .empty-state {
+  grid-column: 1 / -1;
+  min-height: 96px;
+  padding: 1rem;
+}
+
+.dept-status-item {
+  min-width: 0;
+  border: 1px solid rgba(32, 75, 58, 0.1);
+  border-radius: var(--radius-md);
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.68);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.65rem;
+  align-items: center;
+}
+
+.dept-status-name {
+  color: var(--text);
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.dept-status-meta {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dept-status-badge {
+  width: fit-content;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.dept-status-badge.open {
+  color: var(--green);
+  background: var(--green-light);
+}
+
+.dept-status-badge.pause {
+  color: var(--warning);
+  background: var(--warning-light);
+}
+
+.dept-status-badge.closed {
+  color: var(--danger);
+  background: var(--danger-light);
+}
+
+
+:root {
+  --bg: #f3f6f4;
+  --bg-deep: #e7efeb;
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface2: #f8fbf9;
+  --border: rgba(32, 75, 58, 0.14);
+  --text: #17231d;
+  --text-muted: #5f7069;
+  --accent: #16865d;
+  --accent-light: #e8f5ee;
+  --accent-dark: #0d6042;
+  --green: #16865d;
+  --green-light: #e8f5ee;
+  --blue: #2d6f9f;
+  --blue-light: #eaf3f8;
+  --shadow-sm: 0 10px 28px rgba(22, 56, 39, 0.06);
+  --shadow-md: 0 18px 48px rgba(22, 56, 39, 0.12);
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+body {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(243, 246, 244, 0) 280px),
+    linear-gradient(135deg, var(--bg), var(--bg-deep));
+  letter-spacing: 0;
+}
+
+header {
+  height: 68px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 0 rgba(22, 56, 39, 0.04);
+}
+
+.logo {
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.logo::before {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 42%),
+    linear-gradient(135deg, var(--accent), var(--accent-dark));
+  box-shadow: 0 10px 24px rgba(13, 96, 66, 0.22);
+}
+
+main,
+#patientFlow {
+  max-width: 1180px;
+  grid-template-columns: minmax(290px, 350px) minmax(0, 1fr);
+  gap: 1.25rem;
+  padding: 1.75rem;
+}
+
+aside {
+  top: 92px;
+}
+
+.serving-panel,
+.log-card,
+.add-card,
+.queue-card,
+.dept-status-card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.serving-panel {
+  padding: 1.55rem;
+}
+
+.serving-panel::before {
+  height: 5px;
+  background: linear-gradient(90deg, var(--accent-dark), var(--accent), var(--blue));
+}
+
+.serving-label,
+.card-title,
+.wait-stat-label {
+  letter-spacing: 0.55px;
+}
+
+.ticket-number {
+  font-size: clamp(54px, 6.2vw, 76px);
+  color: var(--accent-dark);
+}
+
+.serving-name {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.wait-info {
+  gap: 0.65rem;
+}
+
+.wait-stat {
+  border-radius: var(--radius-md);
+  padding: 0.9rem;
+}
+
+.wait-stat-value {
+  font-size: 26px;
+}
+
+.clinic-status-badge,
+.dept-status-badge,
+.ticket-badge,
+.service-pill {
+  border-radius: 999px;
+}
+
+.right-panel {
+  gap: 1rem;
+}
+
+.queue-header {
+  min-height: 58px;
+  padding: 1rem 1.1rem;
+}
+
+.dept-status-list {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  padding: 0.9rem 1.1rem 1.1rem;
+}
+
+.dept-status-item {
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.add-card {
+  padding: 1.2rem;
+}
+
+.form-row {
+  grid-template-columns: minmax(180px, 1.1fr) minmax(180px, 1fr) minmax(140px, 0.72fr) auto;
+  gap: 0.8rem;
+}
+
+.field label,
+.field--full label {
+  letter-spacing: 0;
+}
+
+.field input,
+.field select,
+.field--full textarea,
+textarea#concern {
+  border-radius: 8px;
+  background: #fff;
+}
+
+.field input:focus,
+.field select:focus,
+.field--full textarea:focus,
+textarea#concern:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(22, 134, 93, 0.1);
+}
+
+.btn-add {
+  border-radius: 8px;
+  background: var(--accent-dark);
+  box-shadow: 0 12px 26px rgba(13, 96, 66, 0.2);
+}
+
+.btn-add:hover {
+  box-shadow: 0 14px 30px rgba(13, 96, 66, 0.26);
+}
+
+.queue-list {
+  max-height: calc(100vh - 340px);
+}
+
+.queue-item {
+  padding: 0.95rem 1.1rem;
+}
+
+.empty-state {
+  min-height: 150px;
+}
+
+#toast {
+  border-radius: 12px;
+}
+
+@media (max-width: 1050px) {
+  main,
+  #patientFlow {
+    grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
+    padding: 1.25rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
-.clear-btn {
-  font-size: 11px;
-  font-weight: 600;
-  color: #b32626;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background 0.15s;
+@media (max-width: 820px) {
+  main,
+  #patientFlow {
+    grid-template-columns: 1fr;
+  }
+
+  aside {
+    top: auto;
+  }
+
+  .queue-list {
+    max-height: none;
+  }
 }
 
-.clear-btn:hover {
-  background: #fde8e8;
-}
+@media (max-width: 560px) {
+  header {
+    min-height: 64px;
+  }
 
-.clinic-status-left {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+  .logo {
+    font-size: 16px;
+  }
 
-.clinic-status-badge {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-}
+  main,
+  #patientFlow {
+    padding: 0.75rem;
+  }
 
-.hidden{
-  display: none;
+  .form-row,
+  .dept-status-list {
+    grid-template-columns: 1fr;
+  }
+
+  .btn-add {
+    width: 100%;
+  }
 }
