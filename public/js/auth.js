@@ -71,6 +71,23 @@ if (formSignup) {
 
 if (formLogin) {
 
+  const toggleVis = document.getElementById('toggle-login-pw');
+  const passInp = document.getElementById('login-password');
+
+
+  function togglefoo(inp, but) {
+    const isHidden = inp.type === "password";
+
+    console.log(isHidden);
+
+    inp.type = isHidden ? "text" : "password";
+    but.textContent = isHidden ? 'visibility' : 'visibility_off';
+  }
+
+  toggleVis.addEventListener("click", () => {
+    togglefoo(passInp, toggleVis);
+  });
+
   formLogin.addEventListener("submit", async (e) => {
     e.preventDefault();
 
