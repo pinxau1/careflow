@@ -106,7 +106,11 @@ if (formLogin) {
       } else {
         window.location.href = '/queue';
       }
+    } else {
+      const errorToggle = document.getElementById('login-error');
+      errorToggle.classList.remove('hidden');
     }
+
   });
 
 
