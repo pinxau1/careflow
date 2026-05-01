@@ -18,7 +18,6 @@ app.use(session({
     secure: false,
     sameSite: 'lax'
   }
-
 }));
 app.use((req, res, next) => {
   console.log(req.method, req.url);
@@ -36,7 +35,22 @@ const pool = mariadb.createPool({
   bigIntAsNumber: true
 });
 
-console.log(pool.host, pool.port, pool.user, pool.password, pool.database);
+async function testDb() {
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+    const rows = await conn.query('SELECT 1 AS connected');
+    console.log('DB connected:', rows);
+  } catch (err) {
+    console.error('DB connection failed:', err.message);
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+testDb();
+console.log(process.env.DB_HOST, process.env.DB_PORT, process.env.DB_USER, process.env.DB_PASSWORD, process.env.DB_NAME);
 
 console.log("this is the right file. ");
 
@@ -109,8 +123,8 @@ app.post('/api/queue', async (req, res) => {
 
     await conn.beginTransaction();
 
-	    const [department] = await conn.execute(
-	      `SELECT department_id, code, queue_status, pause_message, paused_until
+    const [department] = await conn.execute(
+      `SELECT department_id, code, queue_status, pause_message, paused_until
 	       FROM departments
 	       WHERE name = ?`,
       [departmentName]
@@ -121,15 +135,15 @@ app.post('/api/queue', async (req, res) => {
       return res.status(400).json({ error: 'Department not found' });
     }
 
-	    if (department.queue_status !== 'open') {
-	      await conn.rollback();
-	      return res.status(403).json({
-	        error: department.pause_message || 'This department is currently not accepting queues',
-	        department_status: department.queue_status,
-	        pause_message: department.pause_message,
-	        paused_until: department.paused_until
-	      });
-	    }
+    if (department.queue_status !== 'open') {
+      await conn.rollback();
+      return res.status(403).json({
+        error: department.pause_message || 'This department is currently not accepting queues',
+        department_status: department.queue_status,
+        pause_message: department.pause_message,
+        paused_until: department.paused_until
+      });
+    }
 
     await conn.execute(
       `INSERT INTO daily_counters (date, department_id, last_number)
@@ -148,17 +162,17 @@ app.post('/api/queue', async (req, res) => {
 
     const code = department.code + String(Number(counter.last_number)).padStart(3, '0');
 
-	    const dbres = await conn.execute(
-	      `INSERT INTO queues (full_name, user_id, department_id, code, category)
+    const dbres = await conn.execute(
+      `INSERT INTO queues (full_name, user_id, department_id, code, category)
 	       VALUES (NULL, ?, ?, ?, 'general')`,
-	      [uid, department.department_id, code]
-	    );
+      [uid, department.department_id, code]
+    );
 
-	    await conn.execute(
-	      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
+    await conn.execute(
+      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
 	       VALUES (?, ?, 'created')`,
-	      [dbres.insertId, uid]
-	    );
+      [dbres.insertId, uid]
+    );
 
     await conn.commit();
 
@@ -247,7 +261,7 @@ app.get('/api/departments/status', reqLogin, async (req, res) => {
     conn = await pool.getConnection();
 
     const rows = await conn.execute(
-	      `SELECT 
+      `SELECT 
 	          d.department_id,
 	          d.name,
 	          d.code,
@@ -259,7 +273,7 @@ app.get('/api/departments/status', reqLogin, async (req, res) => {
 	       LEFT JOIN queues q ON q.department_id = d.department_id
 	       GROUP BY d.department_id, d.name, d.code, d.queue_status, d.pause_message, d.paused_until
 	       ORDER BY d.name ASC`
-	    );
+    );
 
     return res.json({
       success: true,
@@ -274,45 +288,45 @@ app.get('/api/departments/status', reqLogin, async (req, res) => {
 });
 
 app.patch('/api/admin/departments/:department_id/queue-status', reqLogin, reqStaffOrAdmin, async (req, res) => {
-	  const { department_id } = req.params;
-	  const { queueOpen, queue_status, pause_message, paused_until } = req.body;
+  const { department_id } = req.params;
+  const { queueOpen, queue_status, pause_message, paused_until } = req.body;
 
   if (!canAccessDepartment(req, department_id)) {
     return res.status(403).json({ error: 'You cannot update this department' });
   }
 
-	  const allowedStatuses = ['open', 'pause', 'closed'];
-	  const queueStatus = allowedStatuses.includes(queue_status)
-	    ? queue_status
-	    : (queueOpen ? 'open' : 'closed');
-	  const pauseMessage = queueStatus === 'pause' ? (pause_message || null) : null;
-	  const pausedUntil = queueStatus === 'pause' && paused_until ? paused_until : null;
+  const allowedStatuses = ['open', 'pause', 'closed'];
+  const queueStatus = allowedStatuses.includes(queue_status)
+    ? queue_status
+    : (queueOpen ? 'open' : 'closed');
+  const pauseMessage = queueStatus === 'pause' ? (pause_message || null) : null;
+  const pausedUntil = queueStatus === 'pause' && paused_until ? paused_until : null;
 
   let conn;
 
   try {
     conn = await pool.getConnection();
 
-	    const result = await conn.execute(
-	      `UPDATE departments
+    const result = await conn.execute(
+      `UPDATE departments
 	       SET queue_status = ?,
 	           pause_message = ?,
 	           paused_until = ?
 	       WHERE department_id = ?`,
-	      [queueStatus, pauseMessage, pausedUntil, department_id]
-	    );
+      [queueStatus, pauseMessage, pausedUntil, department_id]
+    );
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Department not found' });
     }
 
     return res.json({
-	      success: true,
-	      department_id: Number(department_id),
-	      queue_status: queueStatus,
-	      pause_message: pauseMessage,
-	      paused_until: pausedUntil
-	    });
+      success: true,
+      department_id: Number(department_id),
+      queue_status: queueStatus,
+      pause_message: pauseMessage,
+      paused_until: pausedUntil
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message });
@@ -466,13 +480,13 @@ app.post('/api/login', async (req, res) => {
     );
 
     if (!user) {
-      return res.status(401).json({ error: 'User not found' });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const passwordOk = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordOk) {
-      return res.status(401).json({ error: 'Invalid password' });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     req.session.uid = user.user_id;
@@ -706,8 +720,8 @@ app.get('/api/admin/dashboard/bootstrap', reqLogin, reqStaffOrAdmin, async (req,
       });
     }
 
-	    const departments = await conn.execute(
-	      `SELECT d.department_id, d.name, d.code, d.queue_status,
+    const departments = await conn.execute(
+      `SELECT d.department_id, d.name, d.code, d.queue_status,
 	              d.pause_message, d.paused_until,
 	              COUNT(CASE WHEN q.status IN ('waiting', 'serving') THEN 1 END) AS queue_count
 	       FROM departments d
@@ -721,8 +735,8 @@ app.get('/api/admin/dashboard/bootstrap', reqLogin, reqStaffOrAdmin, async (req,
       ]
     );
 
-	    const counters = await conn.execute(
-	      `SELECT c.counter_id, c.department_id, c.name, c.status, c.break_until,
+    const counters = await conn.execute(
+      `SELECT c.counter_id, c.department_id, c.name, c.status, c.break_until,
 	              c.current_queue_id, q.code AS current_queue_code
 	       FROM counters c
 	       LEFT JOIN queues q ON q.queue_id = c.current_queue_id
@@ -1102,82 +1116,82 @@ app.patch('/api/admin/queue-status', reqLogin, reqStaffOrAdmin, async (req, res)
 
 
 app.patch('/api/admin/skip/:queue_id', reqLogin, reqStaffOrAdmin, async (req, res) => {
-	  const { queue_id } = req.params;
-	  const conn = await pool.getConnection();
-	  try {
-	    await conn.beginTransaction();
+  const { queue_id } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-	    const [queue] = await conn.execute(
-	      `SELECT queue_id, department_id
+    const [queue] = await conn.execute(
+      `SELECT queue_id, department_id
 	       FROM queues
        WHERE queue_id = ?`,
       [queue_id]
     );
 
-	    if (!queue) {
-	      await conn.rollback();
-	      return res.status(404).json({ error: 'Queue entry not found' });
-	    }
+    if (!queue) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Queue entry not found' });
+    }
 
-	    if (!canAccessDepartment(req, queue.department_id)) {
-	      await conn.rollback();
-	      return res.status(403).json({ error: 'You cannot update this queue entry' });
-	    }
+    if (!canAccessDepartment(req, queue.department_id)) {
+      await conn.rollback();
+      return res.status(403).json({ error: 'You cannot update this queue entry' });
+    }
 
-	    await conn.execute(
-	      `UPDATE queues
+    await conn.execute(
+      `UPDATE queues
 	       SET status = 'no_show',
 	           finished_at = COALESCE(finished_at, NOW())
 	       WHERE queue_id = ?
 	         AND status IN ('waiting', 'serving')`,
-	      [queue_id]
-	    );
+      [queue_id]
+    );
 
-	    await conn.execute(
-	      `UPDATE counters
+    await conn.execute(
+      `UPDATE counters
 	       SET current_queue_id = NULL
 	       WHERE current_queue_id = ?`,
-	      [queue_id]
-	    );
+      [queue_id]
+    );
 
-	    await conn.execute(
-	      `INSERT INTO queue_logs (queue_id, actor_user_id, action, notes)
+    await conn.execute(
+      `INSERT INTO queue_logs (queue_id, actor_user_id, action, notes)
 	       VALUES (?, ?, 'no_show', ?)`,
-	      [queue_id, req.session.uid, req.body && req.body.notes ? req.body.notes : null]
-	    );
+      [queue_id, req.session.uid, req.body && req.body.notes ? req.body.notes : null]
+    );
 
-	    await conn.commit();
-	    res.json({ success: true });
-	  } catch (err) {
-	    await conn.rollback();
-	    res.status(500).json({ error: err.message });
-	  } finally {
-	    conn.release();
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
   }
 });
 
 app.delete('/api/admin/delete/:queue_id', reqLogin, reqStaffOrAdmin, async (req, res) => {
-	  const { queue_id } = req.params;
-	  const conn = await pool.getConnection();
-	  try {
-	    await conn.beginTransaction();
+  const { queue_id } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-	    const [queue] = await conn.execute(
-	      `SELECT queue_id, department_id
+    const [queue] = await conn.execute(
+      `SELECT queue_id, department_id
        FROM queues
        WHERE queue_id = ?`,
       [queue_id]
     );
 
-	    if (!queue) {
-	      await conn.rollback();
-	      return res.status(404).json({ error: 'Queue entry not found' });
-	    }
+    if (!queue) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Queue entry not found' });
+    }
 
-	    if (!canAccessDepartment(req, queue.department_id)) {
-	      await conn.rollback();
-	      return res.status(403).json({ error: 'You cannot delete this queue entry' });
-	    }
+    if (!canAccessDepartment(req, queue.department_id)) {
+      await conn.rollback();
+      return res.status(403).json({ error: 'You cannot delete this queue entry' });
+    }
 
     await conn.execute(
       `UPDATE queues
@@ -1185,81 +1199,81 @@ app.delete('/api/admin/delete/:queue_id', reqLogin, reqStaffOrAdmin, async (req,
            finished_at = COALESCE(finished_at, NOW())
        WHERE queue_id = ?
          AND status IN ('waiting', 'serving')`,
-	      [queue_id]
-	    );
+      [queue_id]
+    );
 
-	    await conn.execute(
-	      `UPDATE counters
+    await conn.execute(
+      `UPDATE counters
 	       SET current_queue_id = NULL
 	       WHERE current_queue_id = ?`,
-	      [queue_id]
-	    );
+      [queue_id]
+    );
 
-	    await conn.execute(
-	      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
+    await conn.execute(
+      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
 	       VALUES (?, ?, 'void')`,
-	      [queue_id, req.session.uid]
-	    );
+      [queue_id, req.session.uid]
+    );
 
-	    await conn.commit();
-	    res.json({ success: true });
-	  } catch (err) {
-	    await conn.rollback();
-	    res.status(500).json({ error: err.message });
-	  } finally {
-	    conn.release();
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
   }
 });
 
 app.post('/api/admin/served', reqLogin, reqStaffOrAdmin, async (req, res) => {
-	  const { department_id } = req.body;
+  const { department_id } = req.body;
   if (!canAccessDepartment(req, department_id)) {
     return res.status(403).json({ error: 'You cannot update this department' });
   }
 
-	  const conn = await pool.getConnection();
-	  try {
-	    await conn.beginTransaction();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-	    const servingRows = await conn.execute(
-	      `SELECT q.queue_id, c.counter_id
+    const servingRows = await conn.execute(
+      `SELECT q.queue_id, c.counter_id
 	       FROM queues q
 	       LEFT JOIN counters c ON c.current_queue_id = q.queue_id
 	       WHERE q.department_id = ?
 	         AND q.status = 'serving'`,
-	      [department_id]
-	    );
+      [department_id]
+    );
 
-	    await conn.execute(
-	      `UPDATE queues
+    await conn.execute(
+      `UPDATE queues
 	       SET status = 'done', finished_at = NOW()
 	       WHERE department_id = ? AND status = 'serving'`,
-	      [department_id]
-	    );
+      [department_id]
+    );
 
-	    await conn.execute(
-	      `UPDATE counters
+    await conn.execute(
+      `UPDATE counters
 	       SET current_queue_id = NULL
 	       WHERE department_id = ?
 	         AND current_queue_id IS NOT NULL`,
-	      [department_id]
-	    );
+      [department_id]
+    );
 
-	    for (const row of servingRows) {
-	      await conn.execute(
-	        `INSERT INTO queue_logs (queue_id, actor_user_id, counter_id, action)
+    for (const row of servingRows) {
+      await conn.execute(
+        `INSERT INTO queue_logs (queue_id, actor_user_id, counter_id, action)
 	         VALUES (?, ?, ?, 'served')`,
-	        [row.queue_id, req.session.uid, row.counter_id || null]
-	      );
-	    }
+        [row.queue_id, req.session.uid, row.counter_id || null]
+      );
+    }
 
-	    await conn.commit();
-	    res.json({ success: true });
-	  } catch (err) {
-	    await conn.rollback();
-	    res.status(500).json({ error: err.message });
-	  } finally {
-	    conn.release();
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
   }
 });
 
@@ -1269,127 +1283,127 @@ app.post('/api/admin/clear', reqLogin, reqStaffOrAdmin, async (req, res) => {
     return res.status(403).json({ error: 'You cannot update this department' });
   }
 
-	  const conn = await pool.getConnection();
-	  try {
-	    await conn.beginTransaction();
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-	    const rows = await conn.execute(
-	      `SELECT queue_id
+    const rows = await conn.execute(
+      `SELECT queue_id
 	       FROM queues
 	       WHERE department_id = ? AND status = 'waiting'`,
-	      [department_id]
-	    );
+      [department_id]
+    );
 
-	    await conn.execute(
-	      `UPDATE queues SET status = 'void'
+    await conn.execute(
+      `UPDATE queues SET status = 'void'
 	       WHERE department_id = ? AND status = 'waiting'`,
-	      [department_id]
-	    );
+      [department_id]
+    );
 
-	    for (const row of rows) {
-	      await conn.execute(
-	        `INSERT INTO queue_logs (queue_id, actor_user_id, action, notes)
+    for (const row of rows) {
+      await conn.execute(
+        `INSERT INTO queue_logs (queue_id, actor_user_id, action, notes)
 	         VALUES (?, ?, 'void', 'Queue cleared')`,
-	        [row.queue_id, req.session.uid]
-	      );
-	    }
+        [row.queue_id, req.session.uid]
+      );
+    }
 
-	    await conn.commit();
-	    res.json({ success: true });
-	  } catch (err) {
-	    await conn.rollback();
-	    res.status(500).json({ error: err.message });
-	  } finally {
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
     conn.release();
   }
 });
 
 
 app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
-	  const { department_id, counter_id } = req.body;
-	  if (!canAccessDepartment(req, department_id)) {
-	    return res.status(403).json({ error: 'You cannot update this department' });
-	  }
+  const { department_id, counter_id } = req.body;
+  if (!canAccessDepartment(req, department_id)) {
+    return res.status(403).json({ error: 'You cannot update this department' });
+  }
 
   const conn = await pool.getConnection();
 
-	  try {
-	    await conn.beginTransaction();
+  try {
+    await conn.beginTransaction();
 
-	    let selectedCounter = null;
+    let selectedCounter = null;
 
-	    if (counter_id) {
-	      const [counter] = await conn.execute(
-	        `SELECT counter_id, department_id, name, status, current_queue_id
+    if (counter_id) {
+      const [counter] = await conn.execute(
+        `SELECT counter_id, department_id, name, status, current_queue_id
 	         FROM counters
 	         WHERE counter_id = ?
 	           AND department_id = ?
 	           AND deleted_at IS NULL`,
-	        [counter_id, department_id]
-	      );
+        [counter_id, department_id]
+      );
 
-	      if (!counter) {
-	        await conn.rollback();
-	        return res.status(400).json({ error: 'Counter not found for this department' });
-	      }
+      if (!counter) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Counter not found for this department' });
+      }
 
-	      if (counter.status !== 'open') {
-	        await conn.rollback();
-	        return res.status(400).json({ error: 'Selected counter is not open' });
-	      }
+      if (counter.status !== 'open') {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Selected counter is not open' });
+      }
 
-	      selectedCounter = counter;
-	    } else {
-	      const [counter] = await conn.execute(
-	        `SELECT counter_id, department_id, name, status, current_queue_id
+      selectedCounter = counter;
+    } else {
+      const [counter] = await conn.execute(
+        `SELECT counter_id, department_id, name, status, current_queue_id
 	         FROM counters
 	         WHERE department_id = ?
 	           AND status = 'open'
 	           AND deleted_at IS NULL
 	         ORDER BY counter_id ASC
 	         LIMIT 1`,
-	        [department_id]
-	      );
+        [department_id]
+      );
 
-	      selectedCounter = counter || null;
-	    }
+      selectedCounter = counter || null;
+    }
 
-	    const servingRows = await conn.execute(
-	      `SELECT q.queue_id, c.counter_id
+    const servingRows = await conn.execute(
+      `SELECT q.queue_id, c.counter_id
 	       FROM queues q
 	       LEFT JOIN counters c ON c.current_queue_id = q.queue_id
 	       WHERE q.department_id = ?
 	         AND q.status = 'serving'`,
-	      [department_id]
-	    );
+      [department_id]
+    );
 
-	    await conn.execute(
-	      `UPDATE queues
+    await conn.execute(
+      `UPDATE queues
 	       SET status = 'done',
 	           finished_at = NOW()
 	       WHERE department_id = ?
 	         AND status = 'serving'`,
-	      [department_id]
-	    );
+      [department_id]
+    );
 
-	    await conn.execute(
-	      `UPDATE counters
+    await conn.execute(
+      `UPDATE counters
 	       SET current_queue_id = NULL
 	       WHERE department_id = ?
 	         AND current_queue_id IS NOT NULL`,
-	      [department_id]
-	    );
+      [department_id]
+    );
 
-	    for (const row of servingRows) {
-	      await conn.execute(
-	        `INSERT INTO queue_logs (queue_id, actor_user_id, counter_id, action)
+    for (const row of servingRows) {
+      await conn.execute(
+        `INSERT INTO queue_logs (queue_id, actor_user_id, counter_id, action)
 	         VALUES (?, ?, ?, 'served')`,
-	        [row.queue_id, req.session.uid, row.counter_id || null]
-	      );
-	    }
+        [row.queue_id, req.session.uid, row.counter_id || null]
+      );
+    }
 
-	    const [next] = await conn.execute(
-	      `SELECT queue_id, code, full_name, category
+    const [next] = await conn.execute(
+      `SELECT queue_id, code, full_name, category
 	       FROM queues
 	       WHERE department_id = ?
 	         AND status = 'waiting'
@@ -1398,8 +1412,8 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
 	                created_at ASC,
 	                queue_id ASC
 	       LIMIT 1`,
-	      [department_id]
-	    );
+      [department_id]
+    );
 
     if (!next) {
       await conn.commit();
@@ -1410,46 +1424,46 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
       });
     }
 
-	    await conn.execute(
-	      `UPDATE queues
+    await conn.execute(
+      `UPDATE queues
 	       SET status = 'serving',
 	           called_at = NOW()
 	       WHERE queue_id = ?`,
-	      [next.queue_id]
-	    );
+      [next.queue_id]
+    );
 
-	    if (selectedCounter) {
-	      await conn.execute(
-	        `UPDATE counters
+    if (selectedCounter) {
+      await conn.execute(
+        `UPDATE counters
 	         SET current_queue_id = ?
 	         WHERE counter_id = ?`,
-	        [next.queue_id, selectedCounter.counter_id]
-	      );
-	    }
+        [next.queue_id, selectedCounter.counter_id]
+      );
+    }
 
-	    await conn.execute(
-	      `INSERT INTO queue_logs (queue_id, actor_user_id, counter_id, action)
+    await conn.execute(
+      `INSERT INTO queue_logs (queue_id, actor_user_id, counter_id, action)
 	       VALUES (?, ?, ?, 'called')`,
-	      [next.queue_id, req.session.uid, selectedCounter ? selectedCounter.counter_id : null]
-	    );
+      [next.queue_id, req.session.uid, selectedCounter ? selectedCounter.counter_id : null]
+    );
 
-	    await conn.commit();
+    await conn.commit();
 
-	    return res.json({
-	      success: true,
-	      next: {
-	        ...next,
-	        counter_id: selectedCounter ? selectedCounter.counter_id : null,
-	        counter_name: selectedCounter ? selectedCounter.name : null
-	      }
-	    });
+    return res.json({
+      success: true,
+      next: {
+        ...next,
+        counter_id: selectedCounter ? selectedCounter.counter_id : null,
+        counter_name: selectedCounter ? selectedCounter.name : null
+      }
+    });
   } catch (err) {
     await conn.rollback();
     return res.status(500).json({ error: err.message });
   } finally {
     conn.release();
-	  }
-	});
+  }
+});
 
 app.post('/api/admin/queues/:queue_id/recall', reqLogin, reqStaffOrAdmin, async (req, res) => {
   const { queue_id } = req.params;
@@ -1765,7 +1779,7 @@ app.get('/api/admin/dashboard/stats/:department_id', reqLogin, reqStaffOrAdmin, 
   } finally {
     if (conn) conn.release();
   }
-	});
+});
 
 app.get('/api/display/now-serving', reqLogin, async (req, res) => {
   const { department_id } = req.query;
@@ -1840,6 +1854,7 @@ app.get('/api/display/now-serving', reqLogin, async (req, res) => {
 
 app.get('/api/queue/:department_id', reqLogin, async (req, res) => {
   const { department_id } = req.params;
+  const userID = req.session.uid;
 
   let conn;
 
@@ -1857,6 +1872,11 @@ app.get('/api/queue/:department_id', reqLogin, async (req, res) => {
                 queue_id ASC`,
       [department_id]
     );
+
+    const userQueue = await conn.execute(
+      `SELECT code FROM queues WHERE `
+    )
+
 
     return res.json(rows);
   } catch (err) {
@@ -1909,29 +1929,29 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
       });
     }
 
-	    const [categ] = await conn.execute(
-	      `SELECT code, department_id, queue_status, pause_message, paused_until
+    const [categ] = await conn.execute(
+      `SELECT code, department_id, queue_status, pause_message, paused_until
 	       FROM departments
 	       WHERE name = ?`,
-	      [serviceType]
-	    );
+      [serviceType]
+    );
 
     if (!categ) {
       await conn.rollback();
       return res.status(400).json({ error: 'Department not found' });
     }
 
-	    if (categ.queue_status !== 'open') {
-	      await conn.rollback();
+    if (categ.queue_status !== 'open') {
+      await conn.rollback();
 
-	      return res.status(403).json({
-	        success: false,
-	        error: categ.pause_message || 'This department is currently not accepting queues',
-	        department_status: categ.queue_status,
-	        pause_message: categ.pause_message,
-	        paused_until: categ.paused_until
-	      });
-	    }
+      return res.status(403).json({
+        success: false,
+        error: categ.pause_message || 'This department is currently not accepting queues',
+        department_status: categ.queue_status,
+        pause_message: categ.pause_message,
+        paused_until: categ.paused_until
+      });
+    }
 
     await conn.execute(
       `INSERT INTO daily_counters (date, department_id, last_number)
@@ -1951,18 +1971,18 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
     const next = Number(counter.last_number);
     const code = categ.code + String(next).padStart(3, '0');
 
-	    const insert = await conn.execute(
-	      `INSERT INTO queues
+    const insert = await conn.execute(
+      `INSERT INTO queues
 	       (full_name, category, visit_description, code, user_id, department_id, is_priority, is_emergency)
 	       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-	      [patientName, category, concern, code, uid, categ.department_id, isPriority, isEmergency]
-	    );
+      [patientName, category, concern, code, uid, categ.department_id, isPriority, isEmergency]
+    );
 
-	    await conn.execute(
-	      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
+    await conn.execute(
+      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
 	       VALUES (?, ?, 'created')`,
-	      [insert.insertId, uid]
-	    );
+      [insert.insertId, uid]
+    );
 
     const [ahead] = await conn.execute(
       `SELECT COUNT(*) AS ahead
@@ -2013,8 +2033,8 @@ app.get('/signup', (req, res) => {
 });
 
 app.get('/queue', reqLogin, (req, res) => {
-	  res.sendFile(path.join(__dirname, 'protected/user.html'));
-	});
+  res.sendFile(path.join(__dirname, 'protected/user.html'));
+});
 
 app.get('/display', reqLogin, (req, res) => {
   res.sendFile(path.join(__dirname, 'protected/display.html'));
