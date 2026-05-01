@@ -10,14 +10,13 @@ if (isDashboard) {
   let departments = [];
   let counters = [];
   let patients = [];
-	  let activeDept = null;
-	  let selectedCounterId = null;
-	  let transferQueueId = null;
-	  let activeFilter = 'all';
+  let activeDept = null;
+  let selectedCounterId = null;
+  let transferQueueId = null;
+  let activeFilter = 'all';
   let searchVal = '';
   let queueOpen = true;
   let cutoffTime = '17:00';
-  let qNum = 42;
 
   let dashboardStats = {
     inQueue: 0, waiting: 0, servedToday: 0, avgWaitMin: null
@@ -35,30 +34,30 @@ if (isDashboard) {
     return `${p.gender || 'Gender'} · ${p.age || 'Age'}`;
   }
 
-	  function getActiveDepartmentName() {
-	    const dept = departments.find(d => d.id === activeDept);
-	    return dept ? dept.name : '';
-	  }
+  function getActiveDepartmentName() {
+    const dept = departments.find(d => d.id === activeDept);
+    return dept ? dept.name : '';
+  }
 
-	  async function readJsonResponse(res, fallbackMessage) {
-	    let data = {};
+  async function readJsonResponse(res, fallbackMessage) {
+    let data = {};
 
-	    try {
-	      data = await res.json();
-	    } catch (err) {
-	      data = {};
-	    }
+    try {
+      data = await res.json();
+    } catch (err) {
+      data = {};
+    }
 
-	    if (!res.ok) {
-	      throw new Error(data.error || fallbackMessage);
-	    }
+    if (!res.ok) {
+      throw new Error(data.error || fallbackMessage);
+    }
 
-	    return data;
-	  }
+    return data;
+  }
 
-	  async function fetchBootstrapData() {
-	    const res = await fetch('/api/admin/dashboard/bootstrap');
-	    const data = await readJsonResponse(res, 'Failed to load dashboard bootstrap data');
+  async function fetchBootstrapData() {
+    const res = await fetch('/api/admin/dashboard/bootstrap');
+    const data = await readJsonResponse(res, 'Failed to load dashboard bootstrap data');
 
     const deptColors = ['#e8f7f2', '#fef3f2', '#eff6ff', '#fefce8', '#f0fdf4', '#faf5ff', '#fff1f2', '#f0f4ff'];
 
@@ -72,30 +71,30 @@ if (isDashboard) {
     departments = (data.departments || []).map((d, i) => ({
       id: String(d.department_id),
       name: d.name,
-	      code: d.code,
-	      queueStatus: d.queue_status || 'open',
-	      pauseMessage: d.pause_message || '',
-	      pausedUntil: d.paused_until || '',
-	      type: inferDeptType(d.name),
+      code: d.code,
+      queueStatus: d.queue_status || 'open',
+      pauseMessage: d.pause_message || '',
+      pausedUntil: d.paused_until || '',
+      type: inferDeptType(d.name),
       queue: Number(d.queue_count || 0),
       color: deptColors[i % deptColors.length],
       imagePlaceholder: 'Dept'
     }));
 
     counters = (data.counters || []).map(c => ({
-	      counterId: Number(c.counter_id),
-	      departmentId: String(c.department_id),
-	      room: c.name || `Counter ${c.counter_id}`,
-	      num: c.current_queue_code || (c.current_queue_id ? String(c.current_queue_id).padStart(3, '0') : '---'),
-	      doctor: c.name || `Counter ${c.counter_id}`,
+      counterId: Number(c.counter_id),
+      departmentId: String(c.department_id),
+      room: c.name || `Counter ${c.counter_id}`,
+      num: c.current_queue_code || (c.current_queue_id ? String(c.current_queue_id).padStart(3, '0') : '---'),
+      doctor: c.name || `Counter ${c.counter_id}`,
       spec: 'General Consultation',
       avg: 'N/A',
       available: c.status === 'open'
     }));
 
-	    const activeDepartment = departments.find(d => String(d.id) === String(activeDept));
-	    queueOpen = activeDepartment ? activeDepartment.queueStatus === 'open' : data.queue_status !== 'closed';
-	    currentRole = data.role;
+    const activeDepartment = departments.find(d => String(d.id) === String(activeDept));
+    queueOpen = activeDepartment ? activeDepartment.queueStatus === 'open' : data.queue_status !== 'closed';
+    currentRole = data.role;
   }
   function applyRoleUI() {
     if (currentRole === 'staff') {
@@ -124,9 +123,9 @@ if (isDashboard) {
   }
 
 
-	  async function fetchDepartmentQueues(departmentId) {
-	    const res = await fetch('/api/admin/dashboard/department/' + departmentId);
-	    const data = await readJsonResponse(res, 'Failed to load department queue data');
+  async function fetchDepartmentQueues(departmentId) {
+    const res = await fetch('/api/admin/dashboard/department/' + departmentId);
+    const data = await readJsonResponse(res, 'Failed to load department queue data');
     patients = (data.queues || []).map(q => ({
       queueId: Number(q.queue_id),
       q: q.code || String(q.queue_id).padStart(3, '0'),
@@ -134,9 +133,9 @@ if (isDashboard) {
       gender: q.sex || '',
       age: q.age || '',
       priority: q.is_emergency || q.is_priority ? 'high' : 'medium',
-	      status: q.status,
-	      counterId: q.counter_id ? Number(q.counter_id) : null,
-	      counter: q.counter_name || 'Unassigned',
+      status: q.status,
+      counterId: q.counter_id ? Number(q.counter_id) : null,
+      counter: q.counter_name || 'Unassigned',
       wait: q.status === 'serving' ? 'Serving now' : 'Waiting',
       queueType: q.category === 'priority' ? 'pwd' : 'regular',
       reason: q.visit_description || q.category || 'No visit description',
@@ -144,9 +143,9 @@ if (isDashboard) {
     }));
   }
 
-	  async function fetchDepartmentStats(departmentId) {
-	    const res = await fetch('/api/admin/dashboard/stats/' + departmentId);
-	    const data = await readJsonResponse(res, 'Failed to load department statistics');
+  async function fetchDepartmentStats(departmentId) {
+    const res = await fetch('/api/admin/dashboard/stats/' + departmentId);
+    const data = await readJsonResponse(res, 'Failed to load department statistics');
     const stats = data.stats || {};
     dashboardStats = {
       inQueue: Number(stats.in_queue || 0),
@@ -194,12 +193,12 @@ if (isDashboard) {
   `).join('');
   }
 
-	  async function refreshDepartmentOverview() {
-	    await fetchBootstrapData();
-	    syncSelectedCounter();
-	    renderDepts();
-	    renderCounters();
-	  }
+  async function refreshDepartmentOverview() {
+    await fetchBootstrapData();
+    syncSelectedCounter();
+    renderDepts();
+    renderCounters();
+  }
 
   function filterDepts(val) { searchVal = val; renderDepts(); }
 
@@ -210,16 +209,16 @@ if (isDashboard) {
     renderDepts();
   }
 
-	  function renderCounters() {
-	    const row = document.getElementById('counters-row');
-	    const deptCounters = counters.filter(c => c.departmentId === String(activeDept));
-	    if (!deptCounters.length) {
-	      selectedCounterId = null;
-	      row.innerHTML = `<div class="counter-card">No counters configured for this department.</div>`;
-	      return;
-	    }
-	    syncSelectedCounter();
-	    row.innerHTML = deptCounters.map((c, i) => `
+  function renderCounters() {
+    const row = document.getElementById('counters-row');
+    const deptCounters = counters.filter(c => c.departmentId === String(activeDept));
+    if (!deptCounters.length) {
+      selectedCounterId = null;
+      row.innerHTML = `<div class="counter-card">No counters configured for this department.</div>`;
+      return;
+    }
+    syncSelectedCounter();
+    row.innerHTML = deptCounters.map((c, i) => `
 	      <div class="counter-card ${Number(c.counterId) === Number(selectedCounterId) ? 'active-counter' : ''}" onclick="selectCounter(${c.counterId}, this)">
 	        <div class="counter-room">${c.room}</div>
 	        <div class="counter-num">${c.num}</div>
@@ -239,31 +238,31 @@ if (isDashboard) {
         </div>
       </div>
 	    `).join('');
-	  }
+  }
 
-	  function syncSelectedCounter() {
-	    const deptCounters = counters.filter(c => c.departmentId === String(activeDept));
-	    if (!deptCounters.length) {
-	      selectedCounterId = null;
-	      return;
-	    }
+  function syncSelectedCounter() {
+    const deptCounters = counters.filter(c => c.departmentId === String(activeDept));
+    if (!deptCounters.length) {
+      selectedCounterId = null;
+      return;
+    }
 
-	    const current = deptCounters.find(c => Number(c.counterId) === Number(selectedCounterId));
-	    if (!current) {
-	      const openCounter = deptCounters.find(c => c.available);
-	      selectedCounterId = openCounter ? openCounter.counterId : deptCounters[0].counterId;
-	    }
-	  }
+    const current = deptCounters.find(c => Number(c.counterId) === Number(selectedCounterId));
+    if (!current) {
+      const openCounter = deptCounters.find(c => c.available);
+      selectedCounterId = openCounter ? openCounter.counterId : deptCounters[0].counterId;
+    }
+  }
 
-	  function selectCounter(counterId, el) {
-	    selectedCounterId = Number(counterId);
-	    document.querySelectorAll('.counter-card').forEach(c => c.classList.remove('active-counter'));
-	    el.classList.add('active-counter');
-	  }
+  function selectCounter(counterId, el) {
+    selectedCounterId = Number(counterId);
+    document.querySelectorAll('.counter-card').forEach(c => c.classList.remove('active-counter'));
+    el.classList.add('active-counter');
+  }
 
 
-	  function formatDateTime(value) {
-	    if (!value) return 'Not called yet';
+  function formatDateTime(value) {
+    if (!value) return 'Not called yet';
 
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'Not called yet';
@@ -271,28 +270,28 @@ if (isDashboard) {
     return date.toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit'
-	    });
-	  }
+    });
+  }
 
-	  function formatDateTimeLocal(value) {
-	    if (!value) return '';
-	    const date = new Date(value);
-	    if (Number.isNaN(date.getTime())) return '';
-	    const pad = n => String(n).padStart(2, '0');
-	    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-	  }
+  function formatDateTimeLocal(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
 
-	  function formatHistoryTime(value) {
-	    if (!value) return '';
-	    const date = new Date(value);
-	    if (Number.isNaN(date.getTime())) return '';
-	    return date.toLocaleString([], {
-	      month: 'short',
-	      day: 'numeric',
-	      hour: '2-digit',
-	      minute: '2-digit'
-	    });
-	  }
+  function formatHistoryTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
 
   function renderNowServingCard() {
     const serving = patients.find(p => p.status === 'serving');
@@ -317,8 +316,8 @@ if (isDashboard) {
 
     if (qNumber) qNumber.textContent = serving.q;
     if (qName) qName.textContent = serving.name;
-	    if (qSub) qSub.textContent = getDemographicText(serving);
-	    if (qSub && serving.counter) qSub.textContent = `${getDemographicText(serving)} · ${serving.counter}`;
+    if (qSub) qSub.textContent = getDemographicText(serving);
+    if (qSub && serving.counter) qSub.textContent = `${getDemographicText(serving)} · ${serving.counter}`;
 
     if (qPriority) {
       qPriority.className = 'priority-chip ' + serving.priority;
@@ -423,23 +422,23 @@ if (isDashboard) {
   }
 
 
-	  function renderQueueControls() {
+  function renderQueueControls() {
     const cutoffDisplay = document.getElementById('queue-cutoff-display');
     const cutoffInput = document.getElementById('queue-cutoff-time');
     const queueNotice = document.getElementById('queue-closed-notice');
     const queueManagementContent = document.getElementById('queue-management-content');
     if (cutoffDisplay) cutoffDisplay.textContent = 'Cutoff: ' + formatTime(cutoffTime);
     if (cutoffInput) cutoffInput.value = cutoffTime;
-	    if (queueNotice) queueNotice.classList.toggle('open', !queueOpen);
-	    if (queueManagementContent) queueManagementContent.classList.toggle('queue-closed-dim', !queueOpen);
-	    const dept = departments.find(d => String(d.id) === String(activeDept));
-	    const statusSelect = document.getElementById('dept-status-select');
-	    const pauseInput = document.getElementById('dept-pause-message');
-	    const pausedUntilInput = document.getElementById('dept-paused-until');
-	    if (statusSelect && dept) statusSelect.value = dept.queueStatus || 'open';
-	    if (pauseInput && dept) pauseInput.value = dept.pauseMessage || '';
-	    if (pausedUntilInput && dept) pausedUntilInput.value = formatDateTimeLocal(dept.pausedUntil);
-	  }
+    if (queueNotice) queueNotice.classList.toggle('open', !queueOpen);
+    if (queueManagementContent) queueManagementContent.classList.toggle('queue-closed-dim', !queueOpen);
+    const dept = departments.find(d => String(d.id) === String(activeDept));
+    const statusSelect = document.getElementById('dept-status-select');
+    const pauseInput = document.getElementById('dept-pause-message');
+    const pausedUntilInput = document.getElementById('dept-paused-until');
+    if (statusSelect && dept) statusSelect.value = dept.queueStatus || 'open';
+    if (pauseInput && dept) pauseInput.value = dept.pauseMessage || '';
+    if (pausedUntilInput && dept) pausedUntilInput.value = formatDateTimeLocal(dept.pausedUntil);
+  }
 
 
   function showPage(p) {
@@ -687,13 +686,13 @@ if (isDashboard) {
   window.deleteCounter = deleteCounter;
   window.loadCountersSettings = loadCountersSettings;
 
-	  async function openDept(id, name) {
-	    activeDept = id;
+  async function openDept(id, name) {
+    activeDept = id;
 
-	    const dept = departments.find(d => String(d.id) === String(id));
-	    queueOpen = !dept || dept.queueStatus === 'open';
-	    selectedCounterId = null;
-	    syncSelectedCounter();
+    const dept = departments.find(d => String(d.id) === String(id));
+    queueOpen = !dept || dept.queueStatus === 'open';
+    selectedCounterId = null;
+    syncSelectedCounter();
 
     document.getElementById('active-dept-name').textContent = name;
 
@@ -725,35 +724,35 @@ if (isDashboard) {
   }
 
 
-	  async function recallCurrentQueue() {
-	    const serving = patients.find(p => p.status === 'serving');
+  async function recallCurrentQueue() {
+    const serving = patients.find(p => p.status === 'serving');
 
-	    if (!serving) {
-	      showToast('No patient is currently serving');
-	      return;
-	    }
+    if (!serving) {
+      showToast('No patient is currently serving');
+      return;
+    }
 
-	    try {
-	      const res = await fetch('/api/admin/queues/' + serving.queueId + '/recall', {
-	        method: 'POST'
-	      });
+    try {
+      const res = await fetch('/api/admin/queues/' + serving.queueId + '/recall', {
+        method: 'POST'
+      });
 
-	      const data = await res.json();
+      const data = await res.json();
 
-	      if (!res.ok || !data.success) {
-	        throw new Error(data.error || 'Failed to recall queue');
-	      }
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to recall queue');
+      }
 
-	      showToast('Recalled ' + serving.q);
-	    } catch (err) {
-	      console.error(err);
-	      showToast('Failed to recall queue');
-	    }
-	  }
+      showToast('Recalled ' + serving.q);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to recall queue');
+    }
+  }
 
-	  function recallQueue() {
-	    recallCurrentQueue();
-	  }
+  function recallQueue() {
+    recallCurrentQueue();
+  }
 
   async function callNextPatient() {
     if (!activeDept) {
@@ -762,14 +761,14 @@ if (isDashboard) {
     }
 
     try {
-	      const res = await fetch('/api/admin/next', {
-	        method: 'POST',
-	        headers: { 'Content-Type': 'application/json' },
-	        body: JSON.stringify({
-	          department_id: activeDept,
-	          counter_id: selectedCounterId
-	        })
-	      });
+      const res = await fetch('/api/admin/next', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          department_id: activeDept,
+          counter_id: selectedCounterId
+        })
+      });
 
       const data = await res.json();
 
@@ -839,7 +838,7 @@ if (isDashboard) {
   window.callNextPatient = callNextPatient;
 
 
-	  async function deletePatient(queueId, qCode) {
+  async function deletePatient(queueId, qCode) {
     if (!queueId) return;
     try {
       const res = await fetch('/api/admin/delete/' + queueId, { method: 'DELETE' });
@@ -852,177 +851,177 @@ if (isDashboard) {
       renderNowServingCard();
       renderStats();
       showToast('Patient #' + qCode + ' removed from queue');
-	    } catch (err) {
-	      console.error(err);
-	      showToast('Failed to remove patient from queue');
-		  }
-	  }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to remove patient from queue');
+    }
+  }
 
-		  async function saveDepartmentStatus() {
-	    if (!activeDept) {
-	      showToast('No department selected');
-	      return;
-	    }
+  async function saveDepartmentStatus() {
+    if (!activeDept) {
+      showToast('No department selected');
+      return;
+    }
 
-	    const status = document.getElementById('dept-status-select').value;
-	    const pauseMessage = document.getElementById('dept-pause-message').value.trim();
-	    const pausedUntilRaw = document.getElementById('dept-paused-until').value;
-	    const pausedUntil = pausedUntilRaw ? pausedUntilRaw.replace('T', ' ') + ':00' : null;
+    const status = document.getElementById('dept-status-select').value;
+    const pauseMessage = document.getElementById('dept-pause-message').value.trim();
+    const pausedUntilRaw = document.getElementById('dept-paused-until').value;
+    const pausedUntil = pausedUntilRaw ? pausedUntilRaw.replace('T', ' ') + ':00' : null;
 
-	    try {
-	      const res = await fetch('/api/admin/departments/' + activeDept + '/queue-status', {
-	        method: 'PATCH',
-	        headers: { 'Content-Type': 'application/json' },
-	        body: JSON.stringify({
-	          queue_status: status,
-	          pause_message: pauseMessage,
-	          paused_until: pausedUntil
-	        })
-	      });
+    try {
+      const res = await fetch('/api/admin/departments/' + activeDept + '/queue-status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          queue_status: status,
+          pause_message: pauseMessage,
+          paused_until: pausedUntil
+        })
+      });
 
-	      const data = await res.json();
+      const data = await res.json();
 
-	      if (!res.ok || !data.success) {
-	        throw new Error(data.error || 'Failed to update department status');
-	      }
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update department status');
+      }
 
-	      const dept = departments.find(d => String(d.id) === String(activeDept));
-	      if (dept) {
-	        dept.queueStatus = data.queue_status;
-	        dept.pauseMessage = data.pause_message || '';
-	        dept.pausedUntil = data.paused_until || '';
-	      }
+      const dept = departments.find(d => String(d.id) === String(activeDept));
+      if (dept) {
+        dept.queueStatus = data.queue_status;
+        dept.pauseMessage = data.pause_message || '';
+        dept.pausedUntil = data.paused_until || '';
+      }
 
-	      queueOpen = data.queue_status === 'open';
-	      await refreshDepartmentOverview();
-	      renderQueueControls();
-	      showToast('Department status updated');
-	    } catch (err) {
-	      console.error(err);
-	      showToast(err.message);
-	    }
-	  }
+      queueOpen = data.queue_status === 'open';
+      await refreshDepartmentOverview();
+      renderQueueControls();
+      showToast('Department status updated');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
+  }
 
-	  function openTransferModal(queueId) {
-	    if (!queueId) return;
-	    transferQueueId = queueId;
+  function openTransferModal(queueId) {
+    if (!queueId) return;
+    transferQueueId = queueId;
 
-	    const select = document.getElementById('transfer-department');
-	    select.innerHTML = departments
-	      .filter(dept => String(dept.id) !== String(activeDept))
-	      .map(dept => `
+    const select = document.getElementById('transfer-department');
+    select.innerHTML = departments
+      .filter(dept => String(dept.id) !== String(activeDept))
+      .map(dept => `
 	        <option value="${dept.id}" ${dept.queueStatus !== 'open' ? 'disabled' : ''}>
 	          ${dept.name}${dept.queueStatus !== 'open' ? ' (' + dept.queueStatus + ')' : ''}
 	        </option>
 	      `).join('');
 
-	    document.getElementById('transfer-notes').value = '';
-	    document.getElementById('transfer-modal-overlay').classList.add('open');
-	  }
+    document.getElementById('transfer-notes').value = '';
+    document.getElementById('transfer-modal-overlay').classList.add('open');
+  }
 
-	  function closeTransferModal() {
-	    transferQueueId = null;
-	    document.getElementById('transfer-modal-overlay').classList.remove('open');
-	  }
+  function closeTransferModal() {
+    transferQueueId = null;
+    document.getElementById('transfer-modal-overlay').classList.remove('open');
+  }
 
-	  function closeTransferModalOuter(e) {
-	    if (e.target === document.getElementById('transfer-modal-overlay')) closeTransferModal();
-	  }
+  function closeTransferModalOuter(e) {
+    if (e.target === document.getElementById('transfer-modal-overlay')) closeTransferModal();
+  }
 
-	  async function submitTransfer() {
-	    if (!transferQueueId) return;
+  async function submitTransfer() {
+    if (!transferQueueId) return;
 
-	    const toDepartmentId = document.getElementById('transfer-department').value;
-	    const notes = document.getElementById('transfer-notes').value.trim();
+    const toDepartmentId = document.getElementById('transfer-department').value;
+    const notes = document.getElementById('transfer-notes').value.trim();
 
-	    if (!toDepartmentId) {
-	      showToast('Select a target department');
-	      return;
-	    }
+    if (!toDepartmentId) {
+      showToast('Select a target department');
+      return;
+    }
 
-	    try {
-	      const res = await fetch('/api/admin/queues/' + transferQueueId + '/transfer', {
-	        method: 'PATCH',
-	        headers: { 'Content-Type': 'application/json' },
-	        body: JSON.stringify({
-	          to_department_id: toDepartmentId,
-	          notes
-	        })
-	      });
+    try {
+      const res = await fetch('/api/admin/queues/' + transferQueueId + '/transfer', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to_department_id: toDepartmentId,
+          notes
+        })
+      });
 
-	      const data = await res.json();
+      const data = await res.json();
 
-	      if (!res.ok || !data.success) {
-	        throw new Error(data.error || 'Failed to transfer queue');
-	      }
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to transfer queue');
+      }
 
-	      closeTransferModal();
-	      await fetchDepartmentQueues(activeDept);
-	      await fetchDepartmentStats(activeDept);
-	      await refreshDepartmentOverview();
-	      renderTable();
-	      renderNextList();
-	      renderNowServingCard();
-	      renderStats();
-	      showToast('Queue transferred');
-	    } catch (err) {
-	      console.error(err);
-	      showToast(err.message);
-	    }
-	  }
+      closeTransferModal();
+      await fetchDepartmentQueues(activeDept);
+      await fetchDepartmentStats(activeDept);
+      await refreshDepartmentOverview();
+      renderTable();
+      renderNextList();
+      renderNowServingCard();
+      renderStats();
+      showToast('Queue transferred');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
+  }
 
-	  async function openHistoryModal(queueId) {
-	    if (!queueId) return;
+  async function openHistoryModal(queueId) {
+    if (!queueId) return;
 
-	    const list = document.getElementById('history-list');
-	    list.textContent = 'Loading history...';
-	    document.getElementById('history-modal-overlay').classList.add('open');
+    const list = document.getElementById('history-list');
+    list.textContent = 'Loading history...';
+    document.getElementById('history-modal-overlay').classList.add('open');
 
-	    try {
-	      const res = await fetch('/api/admin/queues/' + queueId + '/history');
-	      const data = await res.json();
+    try {
+      const res = await fetch('/api/admin/queues/' + queueId + '/history');
+      const data = await res.json();
 
-	      if (!res.ok || !data.success) {
-	        throw new Error(data.error || 'Failed to load history');
-	      }
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load history');
+      }
 
-	      if (!data.logs.length) {
-	        list.innerHTML = `<div class="empty-state">No history recorded for this queue.</div>`;
-	        return;
-	      }
+      if (!data.logs.length) {
+        list.innerHTML = `<div class="empty-state">No history recorded for this queue.</div>`;
+        return;
+      }
 
-	      list.innerHTML = data.logs.map(log => {
-	        const actor = log.actor_name || 'System';
-	        const counter = log.counter_name ? ` · ${log.counter_name}` : '';
-	        const transfer = log.action === 'transferred'
-	          ? ` · ${log.from_department_name || 'Previous department'} to ${log.to_department_name || 'new department'}`
-	          : '';
-	        const notes = log.notes ? `<div class="history-note">${log.notes}</div>` : '';
+      list.innerHTML = data.logs.map(log => {
+        const actor = log.actor_name || 'System';
+        const counter = log.counter_name ? ` · ${log.counter_name}` : '';
+        const transfer = log.action === 'transferred'
+          ? ` · ${log.from_department_name || 'Previous department'} to ${log.to_department_name || 'new department'}`
+          : '';
+        const notes = log.notes ? `<div class="history-note">${log.notes}</div>` : '';
 
-	        return `
+        return `
 	          <div class="history-item">
 	            <div class="history-main">${log.action.replace('_', ' ')}${counter}${transfer}</div>
 	            <div class="history-meta">${actor} · ${formatHistoryTime(log.created_at)}</div>
 	            ${notes}
 	          </div>
 	        `;
-	      }).join('');
-	    } catch (err) {
-	      console.error(err);
-	      list.innerHTML = `<div class="empty-state">Failed to load queue history.</div>`;
-	    }
-	  }
+      }).join('');
+    } catch (err) {
+      console.error(err);
+      list.innerHTML = `<div class="empty-state">Failed to load queue history.</div>`;
+    }
+  }
 
-	  function closeHistoryModal() {
-	    document.getElementById('history-modal-overlay').classList.remove('open');
-	  }
+  function closeHistoryModal() {
+    document.getElementById('history-modal-overlay').classList.remove('open');
+  }
 
-		  function closeHistoryModalOuter(e) {
-		    if (e.target === document.getElementById('history-modal-overlay')) closeHistoryModal();
-		  }
+  function closeHistoryModalOuter(e) {
+    if (e.target === document.getElementById('history-modal-overlay')) closeHistoryModal();
+  }
 
 
-	  function setCutoffTime(value) {
+  function setCutoffTime(value) {
     if (!value) return;
     cutoffTime = value;
     renderQueueControls();
@@ -1199,21 +1198,21 @@ if (isDashboard) {
   window.setFilter = setFilter;
   window.showPage = showPage;
   window.openDept = openDept;
-	  window.switchTab = switchTab;
-	  window.selectCounter = selectCounter;
-	  window.recallQueue = recallQueue;
-	  window.recallCurrentQueue = recallCurrentQueue;
-	  window.skipQueue = skipQueue;
-	  window.callPatient = callPatient;
-	  window.deletePatient = deletePatient;
-	  window.saveDepartmentStatus = saveDepartmentStatus;
-	  window.openTransferModal = openTransferModal;
-	  window.closeTransferModal = closeTransferModal;
-	  window.closeTransferModalOuter = closeTransferModalOuter;
-	  window.submitTransfer = submitTransfer;
-	  window.openHistoryModal = openHistoryModal;
-	  window.closeHistoryModal = closeHistoryModal;
-	  window.closeHistoryModalOuter = closeHistoryModalOuter;
+  window.switchTab = switchTab;
+  window.selectCounter = selectCounter;
+  window.recallQueue = recallQueue;
+  window.recallCurrentQueue = recallCurrentQueue;
+  window.skipQueue = skipQueue;
+  window.callPatient = callPatient;
+  window.deletePatient = deletePatient;
+  window.saveDepartmentStatus = saveDepartmentStatus;
+  window.openTransferModal = openTransferModal;
+  window.closeTransferModal = closeTransferModal;
+  window.closeTransferModalOuter = closeTransferModalOuter;
+  window.submitTransfer = submitTransfer;
+  window.openHistoryModal = openHistoryModal;
+  window.closeHistoryModal = closeHistoryModal;
+  window.closeHistoryModalOuter = closeHistoryModalOuter;
   window.toggleDoctorAvailability = toggleDoctorAvailability;
   window.setCutoffTime = setCutoffTime;
   window.continueQueue = continueQueue;
@@ -1227,42 +1226,42 @@ if (isDashboard) {
   window.toggleNotif = toggleNotif;
 
 
-	  (async function initDashboard() {
-	    try {
-	      await loadCurrentUser();
-	      await fetchBootstrapData();
-	      renderDepts();
-	      applyRoleUI();
-	      loadDepartmentsForStaffForm();
-	      attachStaffForm();
-	      attachCounterForm();
-	      renderQueueControls();
+  (async function initDashboard() {
+    try {
+      await loadCurrentUser();
+      await fetchBootstrapData();
+      renderDepts();
+      applyRoleUI();
+      loadDepartmentsForStaffForm();
+      attachStaffForm();
+      attachCounterForm();
+      renderQueueControls();
 
-	      loadNotifications().catch(err => {
-	        console.error(err);
-	      });
+      loadNotifications().catch(err => {
+        console.error(err);
+      });
 
-	      if (departments.length > 0) {
-	        activeDept = departments[0].id;
-	        queueOpen = departments[0].queueStatus === 'open';
+      if (departments.length > 0) {
+        activeDept = departments[0].id;
+        queueOpen = departments[0].queueStatus === 'open';
         document.getElementById('active-dept-name').textContent = departments[0].name;
 
         if (departments.length === 1) {
           showPage('queue');
-	        }
+        }
 
-	        try {
-	          await fetchDepartmentQueues(activeDept);
-	          await fetchDepartmentStats(activeDept);
-	        } catch (err) {
-	          console.error(err);
-	          showToast(err.message);
-	        }
-	      }
-	    } catch (err) {
-	      console.error(err);
-	      showToast(err.message || 'Failed to load dashboard data');
-	    }
+        try {
+          await fetchDepartmentQueues(activeDept);
+          await fetchDepartmentStats(activeDept);
+        } catch (err) {
+          console.error(err);
+          showToast(err.message);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Failed to load dashboard data');
+    }
     renderCounters();
     renderNextList();
     renderTable();
@@ -2015,7 +2014,7 @@ if (patientEl) {
 
     data.forEach(q => {
       const li = document.createElement('li');
-      li.textContent = q.full_name ? `${q.code} - ${q.full_name}` : q.code;
+      li.textContent = q.full_name ? `${q.code}` : q.code;
       li.classList.add('queue-item');
       list.appendChild(li);
     });
