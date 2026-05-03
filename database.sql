@@ -21,6 +21,24 @@ CREATE TABLE departments (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE department_schedules (
+  schedule_id INT AUTO_INCREMENT PRIMARY KEY,
+  department_id INT NOT NULL,
+  day_of_week TINYINT NOT NULL,
+  opens_at TIME NULL,
+  closes_at TIME NULL,
+  is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+  note VARCHAR(255) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP,
+
+  UNIQUE KEY unique_department_day (department_id, day_of_week),
+  CONSTRAINT chk_department_schedule_day CHECK (day_of_week BETWEEN 0 AND 6),
+  FOREIGN KEY (department_id) REFERENCES departments(department_id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE counters (
   counter_id INT AUTO_INCREMENT PRIMARY KEY,
   department_id INT NOT NULL,
@@ -53,10 +71,14 @@ CREATE TABLE queues (
     'general','support','priority','complaint'
   ) NOT NULL,
 
-  status ENUM('waiting','serving','done','no_show','void')
+  status ENUM('waiting','serving','done','no_show','void','cancelled')
     DEFAULT 'waiting',
 
   visit_description TEXT NULL,
+  ai_suggested_department VARCHAR(100) NULL,
+  ai_category VARCHAR(50) NULL,
+  ai_priority_level VARCHAR(30) NULL,
+  ai_reason TEXT NULL,
 
   is_priority BOOLEAN DEFAULT FALSE,
   is_emergency BOOLEAN DEFAULT FALSE,
@@ -64,9 +86,17 @@ CREATE TABLE queues (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   called_at DATETIME NULL,
   finished_at DATETIME NULL,
+  referred_from_queue_id INT NULL,
+  transfer_reason TEXT NULL,
+  transferred_by_user_id INT NULL,
+  transferred_at DATETIME NULL,
 
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-  FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE RESTRICT
+  FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE RESTRICT,
+  CONSTRAINT fk_queues_referred_from
+    FOREIGN KEY (referred_from_queue_id) REFERENCES queues(queue_id) ON DELETE SET NULL,
+  CONSTRAINT fk_queues_transferred_by
+    FOREIGN KEY (transferred_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE INDEX idx_counters_current_queue ON counters(current_queue_id);
@@ -79,25 +109,18 @@ ALTER TABLE counters
 CREATE TABLE queue_logs (
   log_id INT AUTO_INCREMENT PRIMARY KEY,
 
-  queue_id INT NOT NULL,
+  queue_id INT NULL,
   actor_user_id INT NULL,
+  department_id INT NULL,
 
-  action ENUM(
-    'created','called','skipped','no_show','void','recall',
-    'served','transferred','assigned_counter'
-  ) NOT NULL,
-  counter_id INT NULL,
-  from_department_id INT NULL,
-  to_department_id INT NULL,
-  notes VARCHAR(255) NULL,
+  action VARCHAR(50) NOT NULL,
+  details TEXT NULL,
 
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-  FOREIGN KEY (queue_id) REFERENCES queues(queue_id) ON DELETE CASCADE,
+  FOREIGN KEY (queue_id) REFERENCES queues(queue_id) ON DELETE SET NULL,
   FOREIGN KEY (actor_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
-  FOREIGN KEY (counter_id) REFERENCES counters(counter_id) ON DELETE SET NULL,
-  FOREIGN KEY (from_department_id) REFERENCES departments(department_id) ON DELETE SET NULL,
-  FOREIGN KEY (to_department_id) REFERENCES departments(department_id) ON DELETE SET NULL
+  FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 
@@ -133,11 +156,12 @@ CREATE INDEX idx_queue_status ON queues(status);
 CREATE INDEX idx_queue_user ON queues(user_id);
 CREATE INDEX idx_queue_created ON queues(created_at);
 CREATE INDEX idx_queue_department_status ON queues(department_id, status);
+CREATE INDEX idx_queue_referred_from ON queues(referred_from_queue_id);
 
 CREATE INDEX idx_logs_queue ON queue_logs(queue_id);
 CREATE INDEX idx_logs_actor ON queue_logs(actor_user_id);
-CREATE INDEX idx_logs_counter ON queue_logs(counter_id);
-CREATE INDEX idx_logs_from_department ON queue_logs(from_department_id);
-CREATE INDEX idx_logs_to_department ON queue_logs(to_department_id);
+CREATE INDEX idx_logs_department ON queue_logs(department_id);
 CREATE INDEX idx_logs_created ON queue_logs(created_at);
 CREATE INDEX idx_logs_action ON queue_logs(action);
+
+CREATE INDEX idx_department_schedules_department ON department_schedules(department_id);

@@ -13,10 +13,13 @@ if (isDashboard) {
   let activeDept = null;
   let selectedCounterId = null;
   let transferQueueId = null;
+  let transferSourceQueue = null;
   let activeFilter = 'all';
   let searchVal = '';
   let queueOpen = true;
+  let isCallingNext = false;
   let cutoffTime = '17:00';
+  let latestHistoryRows = [];
 
   let dashboardStats = {
     inQueue: 0, waiting: 0, servedToday: 0, avgWaitMin: null
@@ -128,6 +131,7 @@ if (isDashboard) {
     const data = await readJsonResponse(res, 'Failed to load department queue data');
     patients = (data.queues || []).map(q => ({
       queueId: Number(q.queue_id),
+      department_id: q.department_id,
       q: q.code || String(q.queue_id).padStart(3, '0'),
       name: q.full_name || 'Unknown patient',
       gender: q.sex || '',
@@ -139,6 +143,8 @@ if (isDashboard) {
       wait: q.status === 'serving' ? 'Serving now' : 'Waiting',
       queueType: q.category === 'priority' ? 'pwd' : 'regular',
       reason: q.visit_description || q.category || 'No visit description',
+      aiSuggestedDepartment: q.ai_suggested_department || '',
+      aiPriorityLevel: q.ai_priority_level || 'normal',
       calledAt: q.called_at
     }));
   }
@@ -293,6 +299,16 @@ if (isDashboard) {
     });
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[ch]);
+  }
+
   function renderNowServingCard() {
     const serving = patients.find(p => p.status === 'serving');
 
@@ -350,24 +366,38 @@ if (isDashboard) {
     }
     return list.map(p => `
       <tr>
-        <td><span class="priority-chip ${p.priority}">${p.priority}</span></td>
-        <td class="td-queue">${p.q}</td>
-        <td style="font-weight:500">${p.name}</td>
-        <td><span class="status-badge ${p.status}">${p.status}</span></td>
-        <td>${p.counter}</td>
-        <td class="ai-wait"><strong>${p.wait}</strong></td>
-        <td>
+        <td data-label="Priority"><span class="priority-chip ${p.priority}">${p.priority === 'high' ? 'High' : 'Normal'}</span></td>
+        <td class="td-queue" data-label="Queue #">
+          <div class="queue-line-code">${p.q}</div>
+        </td>
+        <td class="queue-line-patient" data-label="Patient">
+          <div class="queue-line-name">${p.name}</div>
+          <div class="queue-line-detail">${escapeHtml(p.reason || getDemographicText(p))}</div>
+          ${p.aiSuggestedDepartment || (p.aiPriorityLevel && p.aiPriorityLevel !== 'normal') ? `
+          <div class="queue-line-detail">
+            ${p.aiSuggestedDepartment ? `Suggested: ${escapeHtml(p.aiSuggestedDepartment)}` : ''}
+            ${p.aiPriorityLevel === 'urgent_review' ? `${p.aiSuggestedDepartment ? ' · ' : ''}Review: Needs staff review` : ''}
+            ${p.aiPriorityLevel === 'priority' ? `${p.aiSuggestedDepartment ? ' · ' : ''}Review: priority` : ''}
+          </div>
+          ` : ''}
+        </td>
+        <td data-label="Status"><span class="status-badge ${p.status}">${p.status}</span></td>
+        <td data-label="Counter">${p.counter}</td>
+        <td class="ai-wait" data-label="AI Wait"><strong>${p.wait}</strong></td>
+        <td data-label="Actions">
           <div class="action-btns">
 	            <button class="act-btn" onclick="callPatient('${p.q}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
 	              Call
 	            </button>
-	            <button class="act-btn" onclick="openTransferModal(${p.queueId || 0})">
-	              Transfer
-	            </button>
 	            <button class="act-btn" onclick="openHistoryModal(${p.queueId || 0})">
 	              History
 	            </button>
+	            ${p.status === 'waiting' ? `
+	            <button class="act-btn" onclick="cancelPatient(${p.queueId || 0}, '${p.q}')">
+	              Cancel
+	            </button>
+	            ` : ''}
 	            <button class="act-btn del" onclick="deletePatient(${p.queueId || 0}, '${p.q}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
               Remove
@@ -421,6 +451,229 @@ if (isDashboard) {
     if (waitSubEl) waitSubEl.textContent = 'Average from called queues today';
   }
 
+  function renderHistoryDepartmentOptions() {
+    const select = document.getElementById('history-department');
+    if (!select) return;
+
+    select.innerHTML = '';
+
+    if (currentRole === 'staff') {
+      const dept = departments.find(d => String(d.id) === String(activeDept)) || departments[0];
+      const option = document.createElement('option');
+      option.value = dept ? dept.id : '';
+      option.textContent = dept ? dept.name : 'Assigned department';
+      select.appendChild(option);
+      select.disabled = true;
+      return;
+    }
+
+    select.disabled = false;
+
+    const allOption = document.createElement('option');
+    allOption.value = '';
+    allOption.textContent = 'All departments';
+    select.appendChild(allOption);
+
+    departments.forEach(dept => {
+      const option = document.createElement('option');
+      option.value = dept.id;
+      option.textContent = dept.name;
+      select.appendChild(option);
+    });
+  }
+
+  function renderHistoryRows(rows) {
+    const tbody = document.getElementById('history-tbody');
+    if (!tbody) return;
+    latestHistoryRows = rows || [];
+
+    if (!rows.length) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" style="padding: 16px; color: var(--text3);">
+            No queue history found.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = rows.map(row => `
+      <tr>
+        <td class="td-queue">${escapeHtml(row.code || row.queue_id || '')}</td>
+        <td>${escapeHtml(row.full_name || 'Unknown patient')}</td>
+        <td>${escapeHtml(row.department_name || '')}</td>
+        <td>${escapeHtml(row.category || '')}</td>
+        <td><span class="status-badge ${escapeHtml(row.status || '')}">${escapeHtml(row.status || '')}</span></td>
+        <td>${escapeHtml(formatHistoryTime(row.created_at))}</td>
+        <td>${escapeHtml(row.called_at ? formatHistoryTime(row.called_at) : '-')}</td>
+        <td>${escapeHtml(row.finished_at ? formatHistoryTime(row.finished_at) : '-')}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function loadHistoryPage() {
+    renderHistoryDepartmentOptions();
+
+    const tbody = document.getElementById('history-tbody');
+    if (tbody) {
+      tbody.innerHTML = `
+          <tr>
+            <td colspan="8" style="padding: 16px; color: var(--text3);">
+              Loading queue history...
+            </td>
+          </tr>
+      `;
+    }
+
+    const params = new URLSearchParams();
+    const department = document.getElementById('history-department');
+    const status = document.getElementById('history-status');
+    const dateFrom = document.getElementById('history-date-from');
+    const dateTo = document.getElementById('history-date-to');
+    const search = document.getElementById('history-search');
+
+    if (department && department.value && currentRole !== 'staff') params.set('department_id', department.value);
+    if (status && status.value) params.set('status', status.value);
+    if (dateFrom && dateFrom.value) params.set('date_from', dateFrom.value);
+    if (dateTo && dateTo.value) params.set('date_to', dateTo.value);
+    if (search && search.value.trim()) params.set('search', search.value.trim());
+
+    try {
+      const query = params.toString();
+      const res = await fetch('/api/admin/history' + (query ? '?' + query : ''));
+      const data = await readJsonResponse(res, 'Failed to load queue history');
+      renderHistoryRows(data.history || []);
+    } catch (err) {
+      console.error(err);
+      if (tbody) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" style="padding: 16px; color: var(--red);">
+              Failed to load queue history.
+            </td>
+          </tr>
+        `;
+      }
+    }
+  }
+
+  function describeAiFilters(filters, counts = {}, mode = 'ai') {
+    const parts = [];
+    const recordCount = Number(counts.records || 0);
+    const logCount = Number(counts.logs || 0);
+
+    if (mode === 'fallback') parts.push('Fallback search');
+    if (filters.date_from || filters.date_to) {
+      parts.push(`${filters.date_from || 'any'} to ${filters.date_to || 'any'}`);
+    }
+    if (filters.status) parts.push(filters.status);
+    if (filters.department) parts.push(filters.department);
+    if (filters.keywords && filters.keywords.length) parts.push(filters.keywords.join(', '));
+    parts.push(`${recordCount} queue record(s)`);
+    parts.push(`${logCount} log row(s)`);
+    return parts.join(' · ');
+  }
+
+  async function runHistoryAiSearch() {
+    const input = document.getElementById('history-ai-prompt');
+    const statusEl = document.getElementById('history-ai-status');
+    const tbody = document.getElementById('history-tbody');
+    const button = document.querySelector('.history-ai-btn');
+    const prompt = input ? input.value.trim() : '';
+
+    if (!prompt) {
+      if (statusEl) statusEl.textContent = 'Enter a search prompt.';
+      return;
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Searching...';
+    }
+    if (statusEl) statusEl.textContent = 'Converting prompt to filters...';
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" style="padding: 16px; color: var(--text3);">
+            Searching queue history...
+          </td>
+        </tr>
+      `;
+    }
+
+    try {
+      const res = await fetch('/api/admin/history/ai-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      const data = await readJsonResponse(res, 'AI search failed');
+
+      if (!data.success) {
+        throw new Error(data.message || data.error || 'AI search failed');
+      }
+
+      const rows = data.results || data.history || [];
+      renderHistoryRows(rows);
+      if (statusEl) {
+        const statusParts = [];
+        if (data.mode === 'fallback') {
+          statusParts.push(data.message || 'AI search was unavailable, so normal search was used.');
+        }
+        statusParts.push(describeAiFilters(
+          data.filters || {},
+          {
+            records: rows.length,
+            logs: (data.logs || []).length
+          },
+          data.mode || 'ai'
+        ));
+        statusEl.textContent = statusParts.filter(Boolean).join(' · ');
+      }
+    } catch (err) {
+      console.error(err);
+      if (statusEl) statusEl.textContent = err.message || 'AI search failed';
+      if (tbody) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" style="padding: 16px; color: var(--red);">
+              AI search failed. Try regular filters.
+            </td>
+          </tr>
+        `;
+      }
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Search';
+      }
+    }
+  }
+
+  async function resetHistoryFiltersAndReload() {
+    const department = document.getElementById('history-department');
+    const status = document.getElementById('history-status');
+    const dateFrom = document.getElementById('history-date-from');
+    const dateTo = document.getElementById('history-date-to');
+    const search = document.getElementById('history-search');
+    const aiPrompt = document.getElementById('history-ai-prompt');
+    const aiStatus = document.getElementById('history-ai-status');
+
+    if (status) status.value = '';
+    if (dateFrom) dateFrom.value = '';
+    if (dateTo) dateTo.value = '';
+    if (search) search.value = '';
+    if (aiPrompt) aiPrompt.value = '';
+    if (aiStatus) aiStatus.textContent = '';
+
+    if (department && !department.disabled) {
+      department.value = '';
+    }
+
+    await loadHistoryPage();
+  }
+
 
   function renderQueueControls() {
     const cutoffDisplay = document.getElementById('queue-cutoff-display');
@@ -435,9 +688,13 @@ if (isDashboard) {
     const statusSelect = document.getElementById('dept-status-select');
     const pauseInput = document.getElementById('dept-pause-message');
     const pausedUntilInput = document.getElementById('dept-paused-until');
+    const displayLink = document.getElementById('open-display-link');
     if (statusSelect && dept) statusSelect.value = dept.queueStatus || 'open';
     if (pauseInput && dept) pauseInput.value = dept.pauseMessage || '';
     if (pausedUntilInput && dept) pausedUntilInput.value = formatDateTimeLocal(dept.pausedUntil);
+    if (displayLink) {
+      displayLink.href = activeDept ? `/display?department_id=${encodeURIComponent(activeDept)}` : '/display';
+    }
   }
 
 
@@ -470,6 +727,10 @@ if (isDashboard) {
     if (p === 'settings') {
       loadSettingsPage();
     }
+
+    if (p === 'history') {
+      loadHistoryPage();
+    }
   }
 
   async function loadSettingsPage() {
@@ -480,7 +741,9 @@ if (isDashboard) {
     }
 
     await loadDepartmentsForCounterForm();
+    await loadDepartmentsForScheduleForm();
     await loadCountersSettings();
+    await loadScheduleSettings();
   }
 
   async function loadDepartmentsForCounterForm() {
@@ -507,6 +770,273 @@ if (isDashboard) {
       ${dept.name}
     </option>
   `).join('');
+  }
+
+  const scheduleDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  function getScheduleDayOptions(selectedDay) {
+    return scheduleDayNames.map((day, index) => `
+      <option value="${index}" ${Number(selectedDay) === index ? 'selected' : ''}>${day}</option>
+    `).join('');
+  }
+
+  async function loadDepartmentsForScheduleForm() {
+    const select = document.getElementById('schedule-department');
+    if (!select) return;
+
+    select.innerHTML = `<option value="">Select department</option>`;
+
+    if (!departments || departments.length === 0) {
+      await fetchBootstrapData();
+    }
+
+    departments.forEach(dept => {
+      const option = document.createElement('option');
+      option.value = dept.id;
+      option.textContent = dept.name;
+      select.appendChild(option);
+    });
+  }
+
+  function getScheduleCreatePayload() {
+    const isClosed = document.getElementById('schedule-is-closed').checked;
+    const dayOfWeeks = Array.from(document.querySelectorAll('.schedule-day-checkbox:checked'))
+      .map(checkbox => checkbox.value);
+
+    return {
+      departmentId: document.getElementById('schedule-department').value,
+      dayOfWeeks,
+      opensAt: document.getElementById('schedule-opens-at').value,
+      closesAt: document.getElementById('schedule-closes-at').value,
+      isClosed,
+      note: document.getElementById('schedule-note').value.trim()
+    };
+  }
+
+  function validateSchedulePayload(payload) {
+    if (!payload.departmentId) return 'Select a department';
+    if (payload.dayOfWeeks && payload.dayOfWeeks.length === 0) return 'Select at least one day';
+    if (!payload.dayOfWeeks && payload.dayOfWeek === '') return 'Select a day';
+    if (!payload.isClosed) {
+      if (!payload.opensAt || !payload.closesAt) return 'Enter open and close times';
+      if (payload.closesAt <= payload.opensAt) return 'Close time must be after open time';
+    }
+    return '';
+  }
+
+  function setScheduleTimeDisabled(prefix, disabled) {
+    const opens = document.getElementById(prefix + '-opens-at');
+    const closes = document.getElementById(prefix + '-closes-at');
+    if (opens) opens.disabled = disabled;
+    if (closes) closes.disabled = disabled;
+  }
+
+  async function loadScheduleSettings() {
+    const tbody = document.getElementById('settings-schedules-tbody');
+    if (!tbody) return;
+
+    try {
+      const res = await fetch('/api/admin/schedules');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load schedules');
+      }
+
+      const schedules = data.schedules || [];
+
+      if (!schedules.length) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" style="padding: 16px; color: var(--text3);">
+              No schedules configured yet.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = schedules.map(schedule => {
+        const isClosed = Number(schedule.is_closed) === 1 || schedule.is_closed === true;
+        const hoursText = isClosed ? 'Closed all day' : `${schedule.opens_at || ''} - ${schedule.closes_at || ''}`;
+        return `
+          <tr>
+            <td>
+              <select id="schedule-row-department-${schedule.schedule_id}">
+                ${getDepartmentOptions(schedule.department_id)}
+              </select>
+            </td>
+            <td>
+              <select id="schedule-row-day-${schedule.schedule_id}">
+                ${getScheduleDayOptions(schedule.day_of_week)}
+              </select>
+            </td>
+            <td>
+              <div class="schedule-row-hours">
+                <label>
+                  <input
+                    type="checkbox"
+                    id="schedule-row-is-closed-${schedule.schedule_id}"
+                    ${isClosed ? 'checked' : ''}
+                    onchange="setScheduleRowClosed(${schedule.schedule_id}, this.checked)"
+                  >
+                  Closed
+                </label>
+                <input type="time" id="schedule-row-opens-at-${schedule.schedule_id}" value="${schedule.opens_at || ''}" ${isClosed ? 'disabled' : ''} aria-label="${hoursText}">
+                <input type="time" id="schedule-row-closes-at-${schedule.schedule_id}" value="${schedule.closes_at || ''}" ${isClosed ? 'disabled' : ''}>
+              </div>
+            </td>
+            <td>
+              <input type="text" id="schedule-row-note-${schedule.schedule_id}" value="${escapeHtml(schedule.note || '')}" placeholder="Optional note">
+            </td>
+            <td>
+              <div class="action-btns">
+                <button class="act-btn" onclick="saveSchedule(${schedule.schedule_id})">Save</button>
+                <button class="act-btn del" onclick="deleteSchedule(${schedule.schedule_id})">Delete</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Failed to load schedules');
+    }
+  }
+
+  function setScheduleRowClosed(scheduleId, checked) {
+    const opens = document.getElementById('schedule-row-opens-at-' + scheduleId);
+    const closes = document.getElementById('schedule-row-closes-at-' + scheduleId);
+    if (opens) opens.disabled = checked;
+    if (closes) closes.disabled = checked;
+  }
+
+  function setScheduleCreateDays(days) {
+    const selectedDays = new Set(days.map(String));
+    document.querySelectorAll('.schedule-day-checkbox').forEach(checkbox => {
+      checkbox.checked = selectedDays.has(checkbox.value);
+    });
+  }
+
+  function attachScheduleForm() {
+    const form = document.getElementById('schedule-form');
+    if (!form || form.dataset.bound === '1') return;
+
+    form.dataset.bound = '1';
+
+    const closedToggle = document.getElementById('schedule-is-closed');
+    if (closedToggle) {
+      closedToggle.addEventListener('change', e => {
+        setScheduleTimeDisabled('schedule', e.target.checked);
+      });
+    }
+
+    document.querySelectorAll('.schedule-day-action').forEach(button => {
+      button.addEventListener('click', () => {
+        const selector = button.dataset.daySelector;
+        if (selector === 'weekdays') setScheduleCreateDays([1, 2, 3, 4, 5]);
+        if (selector === 'weekend') setScheduleCreateDays([0, 6]);
+        if (selector === 'all') setScheduleCreateDays([0, 1, 2, 3, 4, 5, 6]);
+      });
+    });
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+
+      const payload = getScheduleCreatePayload();
+      const validation = validateSchedulePayload(payload);
+
+      if (validation) {
+        showToast(validation);
+        return;
+      }
+
+      try {
+        for (const dayOfWeek of payload.dayOfWeeks) {
+          const res = await fetch('/api/admin/schedules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              departmentId: payload.departmentId,
+              dayOfWeek,
+              opensAt: payload.opensAt,
+              closesAt: payload.closesAt,
+              isClosed: payload.isClosed,
+              note: payload.note
+            })
+          });
+          const data = await res.json();
+
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Failed to save schedule');
+          }
+        }
+
+        form.reset();
+        setScheduleTimeDisabled('schedule', false);
+        await loadScheduleSettings();
+        showToast(payload.dayOfWeeks.length === 1 ? 'Schedule saved' : 'Schedules saved');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Failed to save schedule');
+      }
+    });
+  }
+
+  async function saveSchedule(scheduleId) {
+    const payload = {
+      departmentId: document.getElementById('schedule-row-department-' + scheduleId).value,
+      dayOfWeek: document.getElementById('schedule-row-day-' + scheduleId).value,
+      opensAt: document.getElementById('schedule-row-opens-at-' + scheduleId).value,
+      closesAt: document.getElementById('schedule-row-closes-at-' + scheduleId).value,
+      isClosed: document.getElementById('schedule-row-is-closed-' + scheduleId).checked,
+      note: document.getElementById('schedule-row-note-' + scheduleId).value.trim()
+    };
+    const validation = validateSchedulePayload(payload);
+
+    if (validation) {
+      showToast(validation);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/schedules/' + scheduleId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update schedule');
+      }
+
+      await loadScheduleSettings();
+      showToast('Schedule updated');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Failed to update schedule');
+    }
+  }
+
+  async function deleteSchedule(scheduleId) {
+    const ok = confirm('Delete this schedule?');
+    if (!ok) return;
+
+    try {
+      const res = await fetch('/api/admin/schedules/' + scheduleId, { method: 'DELETE' });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete schedule');
+      }
+
+      await loadScheduleSettings();
+      showToast('Schedule deleted');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Failed to delete schedule');
+    }
   }
 
   async function loadCountersSettings() {
@@ -755,12 +1285,21 @@ if (isDashboard) {
   }
 
   async function callNextPatient() {
+    if (isCallingNext) return;
+
     if (!activeDept) {
       showToast('No department selected');
       return;
     }
 
+    const callNextButtons = Array.from(document.querySelectorAll('button[onclick="callNextPatient()"]'));
+
     try {
+      isCallingNext = true;
+      callNextButtons.forEach(btn => {
+        btn.disabled = true;
+      });
+
       const res = await fetch('/api/admin/next', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -773,7 +1312,7 @@ if (isDashboard) {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to call next patient');
+        throw new Error(data.message || data.error || 'Failed to call next patient');
       }
 
       await fetchDepartmentQueues(activeDept);
@@ -785,6 +1324,12 @@ if (isDashboard) {
       renderNowServingCard();
       renderStats();
 
+      if (data.completed_queue) {
+        await showCompletedTransferPanel(data.completed_queue);
+      } else {
+        dismissTransferPanel();
+      }
+
       if (data.next) {
         showToast('Now serving ' + data.next.code);
       } else {
@@ -793,6 +1338,11 @@ if (isDashboard) {
     } catch (err) {
       console.error(err);
       showToast('Failed to call next patient');
+    } finally {
+      isCallingNext = false;
+      callNextButtons.forEach(btn => {
+        btn.disabled = false;
+      });
     }
   }
 
@@ -857,6 +1407,31 @@ if (isDashboard) {
     }
   }
 
+  async function cancelPatient(queueId, qCode) {
+    if (!queueId) return;
+
+    try {
+      const res = await fetch('/api/admin/cancel/' + queueId, { method: 'PATCH' });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || 'Failed to cancel queue');
+      }
+
+      await fetchDepartmentQueues(activeDept);
+      await fetchDepartmentStats(activeDept);
+      await refreshDepartmentOverview();
+      renderTable();
+      renderNextList();
+      renderNowServingCard();
+      renderStats();
+      showToast('Queue #' + qCode + ' cancelled');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Failed to cancel queue');
+    }
+  }
+
   async function saveDepartmentStatus() {
     if (!activeDept) {
       showToast('No department selected');
@@ -902,30 +1477,78 @@ if (isDashboard) {
     }
   }
 
-  function openTransferModal(queueId) {
-    if (!queueId) return;
-    transferQueueId = queueId;
+  async function loadTransferDepartments() {
+    const res = await fetch('/api/departments/status');
+    const data = await readJsonResponse(res, 'Failed to load departments');
 
+    return (data.departments || []).map(dept => ({
+      id: Number(dept.department_id),
+      name: dept.name,
+      queueStatus: dept.queue_status || 'open'
+    }));
+  }
+
+  async function showCompletedTransferPanel(sourceQueue) {
+    if (!sourceQueue || !sourceQueue.queue_id) return;
+    const panel = document.getElementById('queue-transfer-panel');
     const select = document.getElementById('transfer-department');
-    select.innerHTML = departments
-      .filter(dept => String(dept.id) !== String(activeDept))
+    const notesEl = document.getElementById('transfer-notes');
+
+    if (!panel || !select || !notesEl) return;
+
+    transferQueueId = Number(sourceQueue.queue_id);
+    transferSourceQueue = sourceQueue;
+
+    const sourceDepartmentId = sourceQueue.department_id || activeDept;
+    let transferDepartments = [];
+
+    try {
+      transferDepartments = await loadTransferDepartments();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Failed to load departments');
+      return;
+    }
+
+    const options = transferDepartments
+      .filter(dept => String(dept.id) !== String(sourceDepartmentId))
       .map(dept => `
 	        <option value="${dept.id}" ${dept.queueStatus !== 'open' ? 'disabled' : ''}>
-	          ${dept.name}${dept.queueStatus !== 'open' ? ' (' + dept.queueStatus + ')' : ''}
+	          ${dept.name} (${dept.queueStatus})
 	        </option>
 	      `).join('');
 
-    document.getElementById('transfer-notes').value = '';
-    document.getElementById('transfer-modal-overlay').classList.add('open');
+    select.innerHTML = options || '<option value="">No available target departments</option>';
+
+    const sourceEl = document.getElementById('transfer-source');
+    if (sourceEl) {
+      const sourceCode = sourceQueue.code || sourceQueue.q || sourceQueue.queue_id;
+      const sourceName = sourceQueue.full_name || sourceQueue.name || 'Unknown patient';
+      const sourceDepartment = sourceQueue.department_name || '';
+      sourceEl.textContent = `${sourceCode} - ${sourceName}${sourceDepartment ? ' · ' + sourceDepartment : ''}`;
+    }
+
+    notesEl.value = '';
+    panel.classList.remove('hidden');
+  }
+
+  function dismissTransferPanel() {
+    transferQueueId = null;
+    transferSourceQueue = null;
+    const panel = document.getElementById('queue-transfer-panel');
+    if (panel) panel.classList.add('hidden');
+  }
+
+  function openTransferModal(queueId) {
+    showToast('Transfer is available after pressing Call Next on a serving patient');
   }
 
   function closeTransferModal() {
-    transferQueueId = null;
-    document.getElementById('transfer-modal-overlay').classList.remove('open');
+    dismissTransferPanel();
   }
 
   function closeTransferModalOuter(e) {
-    if (e.target === document.getElementById('transfer-modal-overlay')) closeTransferModal();
+    dismissTransferPanel();
   }
 
   async function submitTransfer() {
@@ -940,22 +1563,23 @@ if (isDashboard) {
     }
 
     try {
-      const res = await fetch('/api/admin/queues/' + transferQueueId + '/transfer', {
-        method: 'PATCH',
+      const res = await fetch('/api/admin/transfer', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to_department_id: toDepartmentId,
-          notes
+          queue_id: transferQueueId,
+          target_department_id: toDepartmentId,
+          reason: notes
         })
       });
 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to transfer queue');
+        throw new Error(data.message || data.error || 'Failed to transfer queue');
       }
 
-      closeTransferModal();
+      dismissTransferPanel();
       await fetchDepartmentQueues(activeDept);
       await fetchDepartmentStats(activeDept);
       await refreshDepartmentOverview();
@@ -963,7 +1587,7 @@ if (isDashboard) {
       renderNextList();
       renderNowServingCard();
       renderStats();
-      showToast('Queue transferred');
+      showToast(data.message || 'Patient transferred successfully');
     } catch (err) {
       console.error(err);
       showToast(err.message);
@@ -1205,10 +1829,12 @@ if (isDashboard) {
   window.skipQueue = skipQueue;
   window.callPatient = callPatient;
   window.deletePatient = deletePatient;
+  window.cancelPatient = cancelPatient;
   window.saveDepartmentStatus = saveDepartmentStatus;
   window.openTransferModal = openTransferModal;
   window.closeTransferModal = closeTransferModal;
   window.closeTransferModalOuter = closeTransferModalOuter;
+  window.dismissTransferPanel = dismissTransferPanel;
   window.submitTransfer = submitTransfer;
   window.openHistoryModal = openHistoryModal;
   window.closeHistoryModal = closeHistoryModal;
@@ -1224,6 +1850,12 @@ if (isDashboard) {
   window.closeModalOuter = closeModalOuter;
   window.addPatient = addPatient;
   window.toggleNotif = toggleNotif;
+  window.loadHistoryPage = loadHistoryPage;
+  window.runHistoryAiSearch = runHistoryAiSearch;
+  window.loadScheduleSettings = loadScheduleSettings;
+  window.saveSchedule = saveSchedule;
+  window.deleteSchedule = deleteSchedule;
+  window.setScheduleRowClosed = setScheduleRowClosed;
 
 
   (async function initDashboard() {
@@ -1235,6 +1867,26 @@ if (isDashboard) {
       loadDepartmentsForStaffForm();
       attachStaffForm();
       attachCounterForm();
+      attachScheduleForm();
+      const historyAiPrompt = document.getElementById('history-ai-prompt');
+      if (historyAiPrompt) {
+        historyAiPrompt.addEventListener('keydown', e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            runHistoryAiSearch();
+          }
+        });
+      }
+      const historySearch = document.getElementById('history-search');
+      if (historySearch) {
+        historySearch.addEventListener('input', e => {
+          if (String(e.target.value || '').trim() === '') {
+            resetHistoryFiltersAndReload().catch(err => {
+              console.error(err);
+            });
+          }
+        });
+      }
       renderQueueControls();
 
       loadNotifications().catch(err => {
@@ -1301,37 +1953,78 @@ if (isDashboard) {
         throw new Error(data.error || 'Failed to load staff accounts');
       }
 
-      if (!data.staff.length) {
+      const staffAccounts = data.staff || [];
+      const currentUserId = Number(data.current_user_id);
+
+      if (!staffAccounts.length) {
         tbody.innerHTML = `
         <tr>
-          <td colspan="4" style="color: var(--text3); padding: 16px;">
+          <td colspan="7" style="color: var(--text3); padding: 16px;">
             No staff accounts found.
           </td>
         </tr>
       `;
+        syncStaffBulkSelection();
         return;
       }
 
-      tbody.innerHTML = data.staff.map(staff => `
-      <tr>
-        <td>${staff.full_name || 'Unnamed staff'}</td>
-        <td>${staff.username}</td>
+      tbody.innerHTML = staffAccounts.map(staff => {
+        const isSelf = Number(staff.user_id) === currentUserId;
+        const departmentOptions = [
+          `<option value="">No department</option>`,
+          ...departments.map(dept => `
+            <option value="${dept.id}" ${Number(dept.id) === Number(staff.department_id) ? 'selected' : ''}>
+              ${escapeHtml(dept.name)}
+            </option>
+          `)
+        ].join('');
+
+        return `
+      <tr data-staff-row="${staff.user_id}">
         <td>
-          <select onchange="updateStaffDepartment(${staff.user_id}, this.value)">
-            ${departments.map(dept => `
-              <option value="${dept.id}" ${Number(dept.id) === Number(staff.department_id) ? 'selected' : ''}>
-                ${dept.name}
-              </option>
-            `).join('')}
+          <input
+            type="checkbox"
+            class="staff-row-checkbox"
+            value="${staff.user_id}"
+            ${isSelf ? 'disabled' : ''}
+            aria-label="Select ${escapeHtml(staff.full_name || staff.username || 'staff account')}"
+          >
+        </td>
+        <td>
+          <input type="text" id="staff-name-${staff.user_id}" value="${escapeHtml(staff.full_name || '')}" disabled>
+        </td>
+        <td>
+          <input type="text" id="staff-username-${staff.user_id}" value="${escapeHtml(staff.username || '')}" disabled>
+        </td>
+        <td>
+          <input type="tel" id="staff-contact-${staff.user_id}" value="${escapeHtml(staff.contact_number || '')}" disabled>
+        </td>
+        <td>
+          <select id="staff-role-${staff.user_id}" onchange="syncStaffRoleDepartment(${staff.user_id})" disabled>
+            <option value="admin" ${staff.role === 'admin' ? 'selected' : ''}>Admin</option>
+            <option value="staff" ${staff.role === 'staff' ? 'selected' : ''}>Staff</option>
           </select>
         </td>
         <td>
-          <button class="act-btn" onclick="updateStaffDepartment(${staff.user_id}, this.closest('tr').querySelector('select').value)">
-            Save
-          </button>
+          <select id="staff-dept-${staff.user_id}" disabled>
+            ${departmentOptions}
+          </select>
+          <input type="password" id="staff-password-${staff.user_id}" placeholder="New password" autocomplete="new-password" disabled>
+        </td>
+        <td>
+          <div class="action-btns">
+            <button class="act-btn" id="staff-edit-${staff.user_id}" onclick="toggleStaffEdit(${staff.user_id})">Edit</button>
+          </div>
         </td>
       </tr>
-    `).join('');
+    `;
+      }).join('');
+
+      document.querySelectorAll('.staff-row-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', syncStaffBulkSelection);
+      });
+      staffAccounts.forEach(staff => syncStaffRoleDepartment(staff.user_id));
+      syncStaffBulkSelection();
     } catch (err) {
       console.error(err);
       showToast('Failed to load staff accounts');
@@ -1340,7 +2033,9 @@ if (isDashboard) {
 
   function attachStaffForm() {
     const form = document.getElementById('staff-form');
-    if (!form) return;
+    if (!form || form.dataset.bound === '1') return;
+
+    form.dataset.bound = '1';
 
     form.addEventListener('submit', async e => {
       e.preventDefault();
@@ -1383,28 +2078,98 @@ if (isDashboard) {
         showToast(err.message);
       }
     });
+
+    const deleteSelectedButton = document.getElementById('staff-delete-selected');
+    if (deleteSelectedButton) {
+      deleteSelectedButton.addEventListener('click', deleteSelectedStaffAccounts);
+    }
+
+    const selectAll = document.getElementById('staff-select-all');
+    if (selectAll) {
+      selectAll.addEventListener('change', () => {
+        document.querySelectorAll('.staff-row-checkbox:not(:disabled)').forEach(checkbox => {
+          checkbox.checked = selectAll.checked;
+        });
+        syncStaffBulkSelection();
+      });
+    }
   }
 
-  async function updateStaffDepartment(userId, departmentId) {
-    if (!departmentId) {
-      showToast('Please select a department');
+  function setStaffRowEditing(userId, editing) {
+    const row = document.querySelector(`[data-staff-row="${userId}"]`);
+    const editButton = document.getElementById('staff-edit-' + userId);
+    if (!row || !editButton) return;
+
+    row.dataset.editing = editing ? '1' : '0';
+    ['name', 'username', 'contact', 'role', 'dept', 'password'].forEach(field => {
+      const input = document.getElementById(`staff-${field}-${userId}`);
+      if (input) input.disabled = !editing;
+    });
+    syncStaffRoleDepartment(userId);
+    editButton.textContent = editing ? 'Save' : 'Edit';
+  }
+
+  function syncStaffRoleDepartment(userId) {
+    const role = document.getElementById('staff-role-' + userId);
+    const department = document.getElementById('staff-dept-' + userId);
+    if (!role || !department) return;
+
+    department.required = role.value === 'staff';
+    department.disabled = role.disabled || role.value !== 'staff';
+  }
+
+  async function toggleStaffEdit(userId) {
+    const row = document.querySelector(`[data-staff-row="${userId}"]`);
+    if (!row) return;
+
+    const isEditing = row.dataset.editing === '1';
+    if (!isEditing) {
+      setStaffRowEditing(userId, true);
+      return;
+    }
+
+    await saveStaffAccount(userId);
+  }
+
+  async function saveStaffAccount(userId) {
+    const fullName = document.getElementById('staff-name-' + userId).value.trim();
+    const username = document.getElementById('staff-username-' + userId).value.trim();
+    const contact = document.getElementById('staff-contact-' + userId).value.trim();
+    const role = document.getElementById('staff-role-' + userId).value;
+    const departmentId = document.getElementById('staff-dept-' + userId).value;
+    const password = document.getElementById('staff-password-' + userId).value;
+
+    if (!fullName || !username || !role) {
+      showToast('Name, username, and role are required');
+      return;
+    }
+
+    if (role === 'staff' && !departmentId) {
+      showToast('Staff accounts require a department');
       return;
     }
 
     try {
-      const res = await fetch('/api/admin/staff/' + userId + '/department', {
+      const res = await fetch('/api/admin/staff/' + userId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ departmentId })
+        body: JSON.stringify({
+          fullName,
+          username,
+          contact,
+          role,
+          departmentId,
+          password
+        })
       });
 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to update department');
+        throw new Error(data.error || 'Failed to update staff account');
       }
 
-      showToast('Staff department updated');
+      showToast('Staff account updated');
       await loadStaffAccounts();
     } catch (err) {
       console.error(err);
@@ -1412,7 +2177,61 @@ if (isDashboard) {
     }
   }
 
-  window.updateStaffDepartment = updateStaffDepartment;
+  function getSelectedStaffIds() {
+    return Array.from(document.querySelectorAll('.staff-row-checkbox:checked'))
+      .map(checkbox => Number(checkbox.value))
+      .filter(Boolean);
+  }
+
+  function syncStaffBulkSelection() {
+    const checkboxes = Array.from(document.querySelectorAll('.staff-row-checkbox:not(:disabled)'));
+    const checked = checkboxes.filter(checkbox => checkbox.checked);
+    const selectAll = document.getElementById('staff-select-all');
+    const deleteSelectedButton = document.getElementById('staff-delete-selected');
+
+    if (selectAll) {
+      selectAll.checked = checkboxes.length > 0 && checked.length === checkboxes.length;
+      selectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+      selectAll.disabled = checkboxes.length === 0;
+    }
+
+    if (deleteSelectedButton) {
+      deleteSelectedButton.disabled = checked.length === 0;
+    }
+  }
+
+  async function deleteSelectedStaffAccounts() {
+    const userIds = getSelectedStaffIds();
+    if (!userIds.length) {
+      showToast('Select at least one staff account');
+      return;
+    }
+
+    const ok = confirm(`Delete ${userIds.length} selected staff account${userIds.length === 1 ? '' : 's'}?`);
+    if (!ok) return;
+
+    try {
+      const res = await fetch('/api/admin/staff', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_ids: userIds })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete selected staff accounts');
+      }
+
+      showToast(`${data.deleted_count || userIds.length} staff account${userIds.length === 1 ? '' : 's'} deleted`);
+      await loadStaffAccounts();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
+  }
+
+  window.toggleStaffEdit = toggleStaffEdit;
+  window.syncStaffRoleDepartment = syncStaffRoleDepartment;
 
 
 
@@ -1753,9 +2572,15 @@ if (mockAdmin) {
 
 if (patientEl) {
   let departmentId = null;
+  let currentQueueStatus = null;
   let patientPoller = null;
   let isSubmittingQueue = false;
+  let isCancellingQueue = false;
   let isQueueOpen = true;
+  let suggestionTimer = null;
+  let latestSuggestion = null;
+  let lastSuggestedConcern = '';
+  let isSuggesting = false;
 
   const addQueueForm = document.getElementById('add-queue-form');
   const completeFormPrompt = document.getElementById('completeFormLabel');
@@ -1767,7 +2592,10 @@ if (patientEl) {
   const statusBadge = document.getElementById('clinic-status-badge');
   const statusDot = document.getElementById('clinic-status-dot');
   const statusText = document.getElementById('clinic-status-text');
+  const cancelQueueBtn = document.getElementById('btn-cancel-queue');
   const submitBtn = addQueueForm ? addQueueForm.querySelector('button[type="submit"]') : null;
+  const suggestBtn = document.getElementById('btn-suggest-department');
+  const suggestionStatus = document.getElementById('suggestion-status');
 
   function showToast(msg) {
     const toast = document.getElementById('toast');
@@ -1777,6 +2605,115 @@ if (patientEl) {
     toast.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(() => toast.classList.remove('show'), 2400);
+  }
+
+  function setSuggestionStatus(message) {
+    if (!suggestionStatus) return;
+    suggestionStatus.textContent = message || '';
+  }
+
+  function applySuggestedDepartment(departmentName) {
+    if (!addQueueForm || !departmentName) return false;
+    const select = addQueueForm.serviceType;
+    if (!select) return false;
+
+    const option = Array.from(select.options).find(
+      opt => String(opt.value || '').trim().toLowerCase() === String(departmentName).trim().toLowerCase()
+    );
+
+    if (!option) return false;
+    select.value = option.value;
+    return true;
+  }
+
+  async function requestVisitSuggestion(source = 'auto') {
+    if (!addQueueForm) return;
+
+    const concern = addQueueForm.concern.value.trim();
+    if (concern.length < 8) {
+      latestSuggestion = null;
+      if (source === 'button') {
+        showToast('Enter more details before requesting a suggestion.');
+      }
+      setSuggestionStatus('');
+      return;
+    }
+
+    if (isSuggesting) return;
+
+    isSuggesting = true;
+    if (suggestBtn) {
+      suggestBtn.disabled = true;
+      suggestBtn.textContent = 'Suggesting...';
+    }
+    setSuggestionStatus('Checking suggestion...');
+
+    try {
+      const res = await fetch('/api/queue/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ concern })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || 'Suggestion failed');
+      }
+
+      latestSuggestion = data.ai || null;
+      lastSuggestedConcern = concern;
+
+      if (!data.ai) {
+        setSuggestionStatus(data.message || 'Suggestion unavailable. You can still add to queue.');
+        if (source === 'button') {
+          showToast(data.message || 'Suggestion unavailable');
+        }
+        return;
+      }
+
+      const selected = data.ai.suggested_department
+        ? applySuggestedDepartment(data.ai.suggested_department)
+        : false;
+      const reviewText = data.ai.priority_level === 'urgent_review'
+        ? 'Needs staff review'
+        : data.ai.priority_level === 'priority'
+          ? 'Priority'
+          : 'Normal';
+      const deptText = data.ai.suggested_department
+        ? `Suggested department: ${data.ai.suggested_department}${selected ? ' (applied)' : ''}`
+        : 'No department suggestion';
+      setSuggestionStatus(`${deptText} · Review: ${reviewText}. Suggestion only.`);
+    } catch (err) {
+      console.error(err);
+      latestSuggestion = null;
+      setSuggestionStatus('Suggestion unavailable. You can still add to queue.');
+      if (source === 'button') {
+        showToast(err.message || 'Suggestion unavailable');
+      }
+    } finally {
+      isSuggesting = false;
+      if (suggestBtn) {
+        suggestBtn.disabled = !isQueueOpen;
+        suggestBtn.textContent = 'Suggest Department';
+      }
+    }
+  }
+
+  function scheduleVisitSuggestion() {
+    if (!addQueueForm) return;
+    clearTimeout(suggestionTimer);
+    suggestionTimer = setTimeout(() => {
+      const concern = addQueueForm.concern.value.trim();
+      if (concern.length < 8) {
+        latestSuggestion = null;
+        setSuggestionStatus('');
+        return;
+      }
+      if (concern === lastSuggestedConcern) return;
+      requestVisitSuggestion('auto').catch(err => {
+        console.error(err);
+      });
+    }, 800);
   }
 
   function setQueueOpenUI(open, status = 'open') {
@@ -1798,6 +2735,10 @@ if (patientEl) {
       submitBtn.disabled = !open;
       submitBtn.textContent = open ? 'Add' : 'Queue Closed';
     }
+    if (suggestBtn && !addQueueForm.classList.contains('hidden')) {
+      suggestBtn.disabled = !open;
+      if (!isSuggesting) suggestBtn.textContent = 'Suggest Department';
+    }
 
     if (completeFormPrompt && !open && !addQueueForm.classList.contains('hidden')) {
       completeFormPrompt.textContent = 'Queue is currently closed';
@@ -1808,7 +2749,13 @@ if (patientEl) {
     }
   }
 
-  function showQueueState(code, ahead, patientName = 'Joined', departmentName = '') {
+  function setCancelQueueVisible(visible) {
+    if (!cancelQueueBtn) return;
+    cancelQueueBtn.classList.toggle('hidden', !visible);
+    cancelQueueBtn.disabled = isCancellingQueue;
+  }
+
+  function showQueueState(code, ahead, patientName = 'Joined', departmentName = '', status = 'waiting', ai = null, referralMessage = '') {
     if (completeFormPrompt) {
       completeFormPrompt.classList.add('hidden');
     }
@@ -1830,6 +2777,16 @@ if (patientEl) {
     if (nowService) {
       nowService.textContent = departmentName || '';
     }
+    const aiNote = document.getElementById('now-ai-note');
+    if (aiNote) {
+      if (referralMessage) {
+        aiNote.textContent = referralMessage;
+      } else if (ai && ai.suggested_department) {
+        aiNote.textContent = `Suggested department: ${ai.suggested_department}. Note: Suggestion only. Clinic staff may change this.`;
+      } else {
+        aiNote.textContent = '';
+      }
+    }
 
     if (aheadStatus) {
       aheadStatus.textContent = Number(ahead || 0);
@@ -1838,6 +2795,8 @@ if (patientEl) {
     if (estWait) {
       estWait.textContent = `${Number(ahead || 0) * 5}m`;
     }
+
+    setCancelQueueVisible(status === 'waiting');
   }
 
   function showJoinForm() {
@@ -1849,6 +2808,9 @@ if (patientEl) {
     if (addQueueForm) {
       addQueueForm.classList.remove('hidden');
     }
+    latestSuggestion = null;
+    lastSuggestedConcern = '';
+    setSuggestionStatus('');
 
     if (nowTicket) {
       nowTicket.textContent = '---';
@@ -1863,6 +2825,10 @@ if (patientEl) {
     if (nowService) {
       nowService.textContent = '';
     }
+    const aiNote = document.getElementById('now-ai-note');
+    if (aiNote) {
+      aiNote.textContent = '';
+    }
 
     if (aheadStatus) {
       aheadStatus.textContent = '0';
@@ -1872,6 +2838,7 @@ if (patientEl) {
       estWait.textContent = '0m';
     }
 
+    setCancelQueueVisible(false);
     setQueueOpenUI(isQueueOpen);
   }
 
@@ -1887,19 +2854,60 @@ if (patientEl) {
 
     if (data.queued) {
       departmentId = data.department_id;
+      currentQueueStatus = data.status;
 
       showQueueState(
         data.code,
         data.ahead,
         data.full_name,
-        data.department_name
+        data.department_name,
+        data.status,
+        data.ai || null,
+        data.referral_message || ''
       );
+      renderPatientSchedules();
 
       startPolling();
     } else {
       departmentId = null;
+      currentQueueStatus = null;
       showJoinForm();
+      renderPatientSchedules();
       attachForm();
+    }
+  }
+
+  async function cancelCurrentQueue() {
+    if (isCancellingQueue) return;
+
+    const previousDepartmentId = departmentId;
+
+    try {
+      isCancellingQueue = true;
+      setCancelQueueVisible(true);
+
+      const res = await fetch('/api/queue/cancel', {
+        method: 'PATCH'
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || 'Failed to cancel queue');
+      }
+
+      showToast('Queue cancelled');
+      await refreshPatientStatus();
+      await loadDepartmentStatuses();
+
+      if (previousDepartmentId) {
+        await loadQueue(previousDepartmentId);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Failed to cancel queue');
+    } finally {
+      isCancellingQueue = false;
+      setCancelQueueVisible(currentQueueStatus === 'waiting');
     }
   }
 
@@ -1907,6 +2915,19 @@ if (patientEl) {
     if (!addQueueForm || addQueueForm.dataset.bound === '1') return;
 
     addQueueForm.dataset.bound = '1';
+
+    if (suggestBtn) {
+      suggestBtn.addEventListener('click', () => {
+        requestVisitSuggestion('button').catch(err => {
+          console.error(err);
+        });
+      });
+    }
+    if (addQueueForm.concern) {
+      addQueueForm.concern.addEventListener('input', () => {
+        scheduleVisitSuggestion();
+      });
+    }
 
     addQueueForm.addEventListener('submit', async e => {
       e.preventDefault();
@@ -1944,6 +2965,10 @@ if (patientEl) {
       }
 
       try {
+        const concernForSubmit = addQueueForm.concern.value.trim();
+        const aiPayload = concernForSubmit && concernForSubmit === lastSuggestedConcern
+          ? latestSuggestion
+          : null;
         const res = await fetch('/api/queue/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1952,26 +2977,27 @@ if (patientEl) {
             serviceType,
             queueType,
             priority: queueType === 'pwd' ? 'high' : 'medium',
-            concern
+            concern,
+            ai: aiPayload
           })
         });
 
         const data = await res.json();
 
         if (res.status === 409) {
-          showToast(data.error || 'You already have an active queue');
+          showToast(data.message || data.error || 'You already have an active queue.');
           await refreshPatientStatus();
           return;
         }
 
         if (res.status === 403) {
-          showToast(data.error || 'Queue is currently closed');
+          showToast(data.message || data.error || 'Queue is currently closed.');
           await refreshPatientStatus();
           return;
         }
 
         if (!res.ok || !data.success) {
-          showToast(data.error || 'Failed to join queue');
+          showToast(data.message || data.error || 'Failed to join queue');
           return;
         }
 
@@ -1983,16 +3009,18 @@ if (patientEl) {
           data.code,
           data.ahead,
           patientName,
-          serviceType
+          serviceType,
+          'waiting',
+          data.ai || null
         );
+        renderPatientSchedules();
 
         startPolling();
       } catch (err) {
         console.error(err);
         showToast('Server error');
-
+      } finally {
         isSubmittingQueue = false;
-
         if (submitBtn) {
           submitBtn.disabled = !isQueueOpen;
           submitBtn.textContent = isQueueOpen ? 'Add' : 'Queue Closed';
@@ -2014,8 +3042,29 @@ if (patientEl) {
 
     data.forEach(q => {
       const li = document.createElement('li');
-      li.textContent = q.full_name ? `${q.code}` : q.code;
       li.classList.add('queue-item');
+
+      const main = document.createElement('div');
+      main.className = 'queue-item-main';
+
+      const code = document.createElement('div');
+      code.className = 'queue-item-code';
+      code.textContent = q.code || '---';
+      main.appendChild(code);
+
+      if (q.full_name) {
+        const name = document.createElement('div');
+        name.className = 'queue-item-name';
+        name.textContent = q.full_name;
+        main.appendChild(name);
+      }
+
+      const status = document.createElement('span');
+      status.className = 'queue-item-status';
+      status.textContent = q.status || 'waiting';
+
+      li.appendChild(main);
+      li.appendChild(status);
       list.appendChild(li);
     });
   }
@@ -2055,6 +3104,10 @@ if (patientEl) {
   }
 
   const logoutBtn = document.getElementById('btn-logout');
+
+  if (cancelQueueBtn) {
+    cancelQueueBtn.addEventListener('click', cancelCurrentQueue);
+  }
 
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async e => {
@@ -2104,6 +3157,7 @@ if (patientEl) {
 
       renderDepartmentStatuses();
       syncDepartmentSelect();
+      renderPatientSchedules();
     } catch (err) {
       console.error(err);
 
@@ -2136,6 +3190,106 @@ if (patientEl) {
     }).join('');
   }
 
+  const patientScheduleDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  function formatPatientScheduleTime(value) {
+    if (!value) return '';
+    const [hour, minute] = String(value).split(':');
+    const hourNumber = Number(hour);
+    if (!Number.isFinite(hourNumber)) return value;
+    const suffix = hourNumber >= 12 ? 'PM' : 'AM';
+    const displayHour = hourNumber % 12 || 12;
+    return `${displayHour}:${minute || '00'} ${suffix}`;
+  }
+
+  function getScheduleDepartmentsForDisplay() {
+    const select = document.getElementById('inp-service');
+    const selectedName = select && select.value ? select.value : '';
+
+    if (departmentId) {
+      return departmentStatuses.filter(dept => Number(dept.department_id) === Number(departmentId));
+    }
+
+    if (selectedName) {
+      const selected = departmentStatuses.find(dept => dept.name === selectedName);
+      if (selected) return [selected];
+    }
+
+    return departmentStatuses.filter(dept => (dept.schedules || []).length);
+  }
+
+  function renderPatientSchedules() {
+    const container = document.getElementById('department-schedule');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    const departmentsToShow = getScheduleDepartmentsForDisplay();
+    const today = new Date().getDay();
+    const hasSchedules = departmentsToShow.some(dept => (dept.schedules || []).length);
+
+    if (!hasSchedules) {
+      container.className = 'schedule-placeholder';
+      container.innerHTML = `
+        <div class="schedule-icon" aria-hidden="true">Cal</div>
+        <div>
+          <div class="schedule-title">No configured schedule yet</div>
+          <p>
+            Department open schedules are not available from the backend yet.
+            Please use the secretary contact in the topbar for fallback assistance.
+          </p>
+        </div>
+      `;
+      return;
+    }
+
+    container.className = 'schedule-list';
+
+    departmentsToShow.forEach(dept => {
+      const schedules = [...(dept.schedules || [])].sort((a, b) => Number(a.day_of_week) - Number(b.day_of_week));
+      if (!schedules.length) return;
+
+      const group = document.createElement('div');
+      group.className = 'schedule-group';
+
+      const title = document.createElement('div');
+      title.className = 'schedule-group-title';
+      title.textContent = dept.name;
+      group.appendChild(title);
+
+      schedules.forEach(schedule => {
+        const row = document.createElement('div');
+        const day = Number(schedule.day_of_week);
+        const isClosed = Number(schedule.is_closed) === 1 || schedule.is_closed === true;
+        row.className = 'schedule-row' + (day === today ? ' today' : '');
+
+        const dayEl = document.createElement('div');
+        dayEl.className = 'schedule-day';
+        dayEl.textContent = patientScheduleDayNames[day] || 'Day';
+
+        const timeEl = document.createElement('div');
+        timeEl.className = 'schedule-time';
+        timeEl.textContent = isClosed
+          ? 'Closed'
+          : `${formatPatientScheduleTime(schedule.opens_at)} - ${formatPatientScheduleTime(schedule.closes_at)}`;
+
+        row.appendChild(dayEl);
+        row.appendChild(timeEl);
+
+        if (schedule.note) {
+          const noteEl = document.createElement('div');
+          noteEl.className = 'schedule-note';
+          noteEl.textContent = schedule.note;
+          row.appendChild(noteEl);
+        }
+
+        group.appendChild(row);
+      });
+
+      container.appendChild(group);
+    });
+  }
+
   function syncDepartmentSelect() {
     const select = document.getElementById('inp-service');
     if (!select) return;
@@ -2158,6 +3312,11 @@ if (patientEl) {
 
     if (firstOpen) {
       select.value = firstOpen.name;
+    }
+
+    if (select.dataset.scheduleBound !== '1') {
+      select.dataset.scheduleBound = '1';
+      select.addEventListener('change', renderPatientSchedules);
     }
   }
 }

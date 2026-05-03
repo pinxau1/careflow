@@ -67,6 +67,13 @@
           <line x1="3" y1="18" x2="3.01" y2="18"/>
         </svg>
       </button>
+      <button class="side-btn" data-page="history" title="History" onclick="showPage('history')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 1 0 3-6.7"/>
+          <path d="M3 3v6h6"/>
+          <path d="M12 7v5l3 2"/>
+        </svg>
+      </button>
       <button class="side-btn" data-page="staff" title="Staff" onclick="showPage('staff')">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -146,22 +153,30 @@
             </div>
           </form>
 
-          <div class="staff-card">
-            <div class="staff-card-title">Staff Accounts</div>
+          <div class="staff-card staff-table-card">
+            <div class="staff-table-header">
+              <div class="staff-card-title">Staff Accounts</div>
+              <button type="button" class="act-btn del" id="staff-delete-selected" disabled>Delete Selected</button>
+            </div>
 
             <div class="staff-table-wrap">
               <table>
                 <thead>
                   <tr>
+                    <th>
+                      <input type="checkbox" id="staff-select-all" aria-label="Select all staff accounts">
+                    </th>
                     <th>Name</th>
                     <th>Username</th>
-                    <th>Department</th>
-                    <th>Action</th>
+                    <th>Contact Number</th>
+                    <th>Role</th>
+                    <th>Assigned Department</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="staff-tbody">
                   <tr>
-                    <td colspan="4" style="color: var(--text3); padding: 16px;">
+                    <td colspan="7" style="color: var(--text3); padding: 16px;">
                       No staff accounts loaded.
                     </td>
                   </tr>
@@ -192,6 +207,87 @@
         </div>
         <div class="dept-grid" id="dept-grid"></div>
     </div>
+
+      <div class="page" id="page-history">
+        <div class="page-header">
+          <div class="page-title">Queue History</div>
+          <div class="page-sub">Review completed and closed queue records</div>
+        </div>
+
+        <div class="history-page">
+          <div class="history-ai-search">
+            <div class="form-group history-ai-input">
+              <label for="history-ai-prompt">AI Search</label>
+              <input
+                type="search"
+                id="history-ai-prompt"
+                placeholder="Try: 5 years ago checked for stomach ache"
+              >
+            </div>
+            <button class="btn-submit history-ai-btn" onclick="runHistoryAiSearch()">Search</button>
+            <div class="history-ai-status" id="history-ai-status"></div>
+          </div>
+
+          <div class="history-filters">
+            <div class="form-group">
+              <label for="history-department">Department</label>
+              <select id="history-department"></select>
+            </div>
+
+            <div class="form-group">
+              <label for="history-status">Status</label>
+              <select id="history-status">
+                <option value="">All closed statuses</option>
+                <option value="done">Done</option>
+                <option value="no_show">No Show</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="void">Void</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="history-date-from">From</label>
+              <input type="date" id="history-date-from">
+            </div>
+
+            <div class="form-group">
+              <label for="history-date-to">To</label>
+              <input type="date" id="history-date-to">
+            </div>
+
+            <div class="form-group history-search-group">
+              <label for="history-search">Search</label>
+              <input type="search" id="history-search" placeholder="Code, name, category, or details">
+            </div>
+
+            <button class="btn-submit history-filter-btn" onclick="loadHistoryPage()">Apply</button>
+          </div>
+
+          <div class="history-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Queue #</th>
+                  <th>Patient</th>
+                  <th>Department</th>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Called</th>
+                  <th>Finished</th>
+                </tr>
+              </thead>
+              <tbody id="history-tbody">
+                <tr>
+                  <td colspan="8" style="padding: 16px; color: var(--text3);">
+                    Use filters to load queue history.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
 
       <div class="page" id="page-settings">
         <div class="page-header">
@@ -265,6 +361,87 @@
               </table>
             </div>
           </section>
+
+          <section class="settings-panel schedule-settings-panel">
+            <div class="settings-panel-header">
+              <div>
+                <div class="settings-panel-title">Department Schedules</div>
+                <div class="settings-panel-sub">Set recurring weekly open hours shown on the patient queue page</div>
+              </div>
+
+              <button class="btn-light" onclick="loadScheduleSettings()">Refresh</button>
+            </div>
+
+            <form id="schedule-form" class="schedule-form">
+              <div class="form-group">
+                <label for="schedule-department">Department</label>
+                <select id="schedule-department" required>
+                  <option value="">Select department</option>
+                </select>
+              </div>
+
+              <div class="form-group schedule-day-picker">
+                <label>Days</label>
+                <div class="schedule-day-actions" aria-label="Quick day selection">
+                  <button type="button" class="schedule-day-action" data-day-selector="weekdays">Weekdays</button>
+                  <button type="button" class="schedule-day-action" data-day-selector="weekend">Weekend</button>
+                  <button type="button" class="schedule-day-action" data-day-selector="all">All days</button>
+                </div>
+                <div class="schedule-day-grid" role="group" aria-label="Schedule days">
+                  <label><input type="checkbox" class="schedule-day-checkbox" value="0"> Sunday</label>
+                  <label><input type="checkbox" class="schedule-day-checkbox" value="1"> Monday</label>
+                  <label><input type="checkbox" class="schedule-day-checkbox" value="2"> Tuesday</label>
+                  <label><input type="checkbox" class="schedule-day-checkbox" value="3"> Wednesday</label>
+                  <label><input type="checkbox" class="schedule-day-checkbox" value="4"> Thursday</label>
+                  <label><input type="checkbox" class="schedule-day-checkbox" value="5"> Friday</label>
+                  <label><input type="checkbox" class="schedule-day-checkbox" value="6"> Saturday</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="schedule-opens-at">Opens</label>
+                <input type="time" id="schedule-opens-at">
+              </div>
+
+              <div class="form-group">
+                <label for="schedule-closes-at">Closes</label>
+                <input type="time" id="schedule-closes-at">
+              </div>
+
+              <label class="schedule-closed-toggle">
+                <input type="checkbox" id="schedule-is-closed">
+                Closed all day
+              </label>
+
+              <div class="form-group schedule-note-field">
+                <label for="schedule-note">Note</label>
+                <input type="text" id="schedule-note" placeholder="Optional note">
+              </div>
+
+              <button type="submit" class="btn-submit">Save Schedule</button>
+            </form>
+
+            <div class="settings-table-wrap schedule-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Department</th>
+                    <th>Day</th>
+                    <th>Hours</th>
+                    <th>Note</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="settings-schedules-tbody">
+                  <tr>
+                    <td colspan="5" style="padding: 16px; color: var(--text3);">
+                      No schedules loaded.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </div>
     
@@ -282,6 +459,7 @@
 	        </div>
 	        </div>
 
+	        <section class="queue-workspace">
 	        <div class="queue-admin-tools">
 	          <div class="queue-status-controls">
 	            <label for="dept-status-select">Department Status</label>
@@ -294,7 +472,7 @@
 	            <input type="datetime-local" id="dept-paused-until">
 	            <button class="act-btn" onclick="saveDepartmentStatus()">Save Status</button>
 	          </div>
-	          <a class="act-btn" href="/display" target="_blank">Open Display</a>
+	          <a class="act-btn" id="open-display-link" href="/display" target="_blank">Open Display</a>
 	        </div>
 	    
 	        <div class="tabs">
@@ -307,28 +485,55 @@
     
         <div class="queue-main-row">
             <div class="queue-card" id="queue-card">
-            <div class="queue-number-section">
+              <div class="queue-card-main">
                 <div class="queue-now-label">Now Serving</div>
                 <div class="queue-number" id="q-number">---</div>
                 <div class="queue-patient-name" id="q-name">No patient in queue</div>
                 <div class="queue-patient-sub" id="q-sub">Patient details unavailable</div>
-                <span class="priority-chip medium" id="q-priority">Normal</span>
-                <span class="time-chip" id="q-time">Not called yet</span>
+                <div class="queue-chip-row">
+                  <span class="priority-chip medium" id="q-priority">Normal</span>
+                  <span class="time-chip" id="q-time">Not called yet</span>
                 </div>
-            </div>
-            <div class="queue-divider"></div>
-            <div class="queue-actions-section">
-	            <button class="btn-recall" onclick="callNextPatient()">
-	                  Call Next
-	                </button>
-	                <button class="btn-skip" onclick="recallCurrentQueue()">
-	                Recall
-	                </button>
-	                <button class="btn-skip" onclick="skipQueue()">
-	                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 17 12 12 5 7"/><polyline points="14 17 21 12 14 7"/></svg>
-                Skip
+              </div>
+              <div class="queue-divider"></div>
+              <div class="queue-actions-section">
+                <button class="btn-recall" onclick="callNextPatient()">
+                  Call Next
                 </button>
+                <div class="queue-action-row">
+                  <button class="btn-skip" onclick="recallCurrentQueue()">
+                    Recall
+                  </button>
+                  <button class="btn-skip" onclick="skipQueue()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 17 12 12 5 7"/><polyline points="14 17 21 12 14 7"/></svg>
+                    Skip
+                  </button>
+                </div>
+              </div>
             </div>
+
+            <div class="queue-transfer-panel hidden" id="queue-transfer-panel">
+              <div class="queue-transfer-head">
+                <div>
+                  <div class="queue-transfer-kicker">Completed Patient</div>
+                  <div class="queue-transfer-source" id="transfer-source">Select a completed queue</div>
+                </div>
+                <button type="button" class="modal-close" onclick="dismissTransferPanel()">×</button>
+              </div>
+              <div class="queue-transfer-grid">
+                <div class="form-group">
+                  <label for="transfer-department">Target Department</label>
+                  <select id="transfer-department"></select>
+                </div>
+                <div class="form-group">
+                  <label for="transfer-notes">Reason</label>
+                  <textarea id="transfer-notes" rows="3" placeholder="Reason for transfer or referral"></textarea>
+                </div>
+              </div>
+              <div class="queue-transfer-actions">
+                <button type="button" class="btn-cancel" onclick="dismissTransferPanel()">Dismiss</button>
+                <button type="button" class="btn-submit" onclick="submitTransfer()">Transfer Patient</button>
+              </div>
             </div>
     
             <div class="next-card">
@@ -387,33 +592,6 @@
         </div>
 	    </div>
 
-	    <div class="modal-overlay" id="transfer-modal-overlay" onclick="closeTransferModalOuter(event)">
-	    <div class="modal">
-	        <div class="modal-header">
-	        <span class="modal-title">Transfer Queue</span>
-	        <button class="modal-close" onclick="closeTransferModal()">×</button>
-	        </div>
-	        <div class="modal-body">
-	        <div class="form-row">
-	            <div class="form-group full">
-	            <label for="transfer-department">Target Department</label>
-	            <select id="transfer-department"></select>
-	            </div>
-	        </div>
-	        <div class="form-row">
-	            <div class="form-group full">
-	            <label for="transfer-notes">Notes</label>
-	            <input type="text" id="transfer-notes" placeholder="Reason for transfer">
-	            </div>
-	        </div>
-	        </div>
-	        <div class="modal-footer">
-	        <button class="btn-cancel" onclick="closeTransferModal()">Cancel</button>
-	        <button class="btn-submit" onclick="submitTransfer()">Transfer</button>
-	        </div>
-	    </div>
-	    </div>
-
 	    <div class="modal-overlay" id="history-modal-overlay" onclick="closeHistoryModalOuter(event)">
 	    <div class="modal">
 	        <div class="modal-header">
@@ -456,6 +634,7 @@
             </table>
         </div>
         </div>
+        </section>
     </div>
     
     </main>

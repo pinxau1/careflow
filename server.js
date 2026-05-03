@@ -4,9 +4,13 @@ const dotenv = require('dotenv');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
 const path = require('path');
+const Groq = require('groq-sdk');
 
 dotenv.config();
 const app = express();
+const groq = process.env.GROQ_API_KEY
+  ? new Groq({ apiKey: process.env.GROQ_API_KEY })
+  : null;
 
 app.use(session({
   name: 'careflow.sid',
@@ -50,7 +54,7 @@ async function testDb() {
 }
 
 testDb();
-console.log(process.env.DB_HOST, process.env.DB_PORT, process.env.DB_USER, process.env.DB_PASSWORD, process.env.DB_NAME);
+// console.log(process.env.DB_HOST, process.env.DB_PORT, process.env.DB_USER, process.env.DB_PASSWORD, process.env.DB_NAME);
 
 console.log("this is the right file. ");
 
@@ -101,6 +105,995 @@ function canAccessDepartment(req, departmentId) {
   return false;
 }
 
+function normalizeSchedulePayload(body) {
+  const departmentId = Number(body.departmentId || body.department_id);
+  const dayOfWeek = Number(body.dayOfWeek ?? body.day_of_week);
+  const isClosed = !!body.isClosed || body.is_closed === true || body.is_closed === 'true' || body.is_closed === 1 || body.is_closed === '1';
+  const opensAt = body.opensAt || body.opens_at || null;
+  const closesAt = body.closesAt || body.closes_at || null;
+  const note = body.note ? String(body.note).trim().slice(0, 255) : null;
+  const timePattern = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+
+  if (!departmentId) {
+    return { error: 'Department is required' };
+  }
+
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+    return { error: 'Day of week is required' };
+  }
+
+  if (!isClosed) {
+    if (!opensAt || !closesAt) {
+      return { error: 'Open and close times are required' };
+    }
+
+    if (!timePattern.test(opensAt) || !timePattern.test(closesAt)) {
+      return { error: 'Use valid open and close times' };
+    }
+
+    if (closesAt <= opensAt) {
+      return { error: 'Close time must be after open time' };
+    }
+  }
+
+  return {
+    departmentId,
+    dayOfWeek,
+    opensAt: isClosed ? null : opensAt,
+    closesAt: isClosed ? null : closesAt,
+    isClosed,
+    note
+  };
+}
+
+async function logQueueAction(conn, { queue_id = null, actor_user_id = null, department_id = null, action, details = null }) {
+  if (!conn) throw new Error('Database connection is required for queue logging');
+  if (!action) throw new Error('Queue log action is required');
+
+  const detailText = details && typeof details === 'object'
+    ? JSON.stringify(details)
+    : details;
+
+  await conn.execute(
+    `INSERT INTO queue_logs
+     (queue_id, actor_user_id, department_id, action, details)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      queue_id || null,
+      actor_user_id || null,
+      department_id || null,
+      action,
+      detailText || null
+    ]
+  );
+}
+
+let queueTransferSchemaReady = false;
+
+async function ensureQueueTransferSchema() {
+  if (queueTransferSchemaReady) return;
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const requiredColumns = [
+      ['referred_from_queue_id', 'INT NULL'],
+      ['transfer_reason', 'TEXT NULL'],
+      ['transferred_by_user_id', 'INT NULL'],
+      ['transferred_at', 'DATETIME NULL']
+    ];
+
+    for (const [columnName, definition] of requiredColumns) {
+      const [column] = await conn.execute(
+        `SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = DATABASE()
+           AND table_name = 'queues'
+           AND column_name = ?
+         LIMIT 1`,
+        [columnName]
+      );
+
+      if (!column) {
+        await conn.execute(`ALTER TABLE queues ADD COLUMN ${columnName} ${definition}`);
+      }
+    }
+
+    const [referredFromFk] = await conn.execute(
+      `SELECT 1
+       FROM information_schema.table_constraints
+       WHERE constraint_schema = DATABASE()
+         AND table_name = 'queues'
+         AND constraint_name = 'fk_queues_referred_from'
+       LIMIT 1`
+    );
+
+    if (!referredFromFk) {
+      await conn.execute(
+        `ALTER TABLE queues
+         ADD CONSTRAINT fk_queues_referred_from
+         FOREIGN KEY (referred_from_queue_id)
+         REFERENCES queues(queue_id)
+         ON DELETE SET NULL`
+      );
+    }
+
+    const [transferredByFk] = await conn.execute(
+      `SELECT 1
+       FROM information_schema.table_constraints
+       WHERE constraint_schema = DATABASE()
+         AND table_name = 'queues'
+         AND constraint_name = 'fk_queues_transferred_by'
+       LIMIT 1`
+    );
+
+    if (!transferredByFk) {
+      await conn.execute(
+        `ALTER TABLE queues
+         ADD CONSTRAINT fk_queues_transferred_by
+         FOREIGN KEY (transferred_by_user_id)
+         REFERENCES users(user_id)
+         ON DELETE SET NULL`
+      );
+    }
+
+    const [referredFromIndex] = await conn.execute(
+      `SELECT 1
+       FROM information_schema.statistics
+       WHERE table_schema = DATABASE()
+         AND table_name = 'queues'
+         AND index_name = 'idx_queue_referred_from'
+       LIMIT 1`
+    );
+
+    if (!referredFromIndex) {
+      await conn.execute('CREATE INDEX idx_queue_referred_from ON queues(referred_from_queue_id)');
+    }
+
+    queueTransferSchemaReady = true;
+  } catch (err) {
+    console.error('Queue transfer schema setup failed:', err.message);
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+async function generateQueueCode(conn, departmentId) {
+  await conn.execute(
+    `INSERT INTO daily_counters (date, department_id, last_number)
+     VALUES (CURDATE(), ?, 1)
+     ON DUPLICATE KEY UPDATE last_number = last_number + 1`,
+    [departmentId]
+  );
+
+  const [counter] = await conn.execute(
+    `SELECT dc.last_number, d.code
+     FROM daily_counters dc
+     JOIN departments d ON d.department_id = dc.department_id
+     WHERE dc.date = CURDATE()
+       AND dc.department_id = ?`,
+    [departmentId]
+  );
+
+  return counter.code + String(Number(counter.last_number)).padStart(3, '0');
+}
+
+function buildTransferVisitDescription(sourceDescription, reason) {
+  const cleanSource = String(sourceDescription || '').trim();
+  const cleanReason = String(reason || '').trim();
+
+  if (!cleanReason) return cleanSource || 'Transferred from completed queue';
+  if (!cleanSource) return `Referral note: ${cleanReason}`;
+  return `${cleanSource}\n\nReferral note: ${cleanReason}`;
+}
+
+async function performQueueTransfer(req, { queue_id, target_department_id, reason }) {
+  const sourceQueueId = Number(queue_id);
+  const targetDepartmentId = Number(target_department_id);
+  const transferReason = String(reason || '').trim();
+
+  if (!sourceQueueId) {
+    return { status: 400, body: { success: false, message: 'queue_id is required.' } };
+  }
+
+  if (!targetDepartmentId) {
+    return { status: 400, body: { success: false, message: 'target_department_id is required.' } };
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [sourceQueue] = await conn.execute(
+      `SELECT q.queue_id,
+              q.code,
+              q.user_id,
+              q.department_id,
+              q.full_name,
+              q.category,
+              q.visit_description,
+              q.status,
+              q.is_priority,
+              q.is_emergency,
+              q.ai_suggested_department,
+              q.ai_category,
+              q.ai_priority_level,
+              q.ai_reason,
+              d.name AS source_department_name
+       FROM queues q
+       JOIN departments d ON d.department_id = q.department_id
+       WHERE q.queue_id = ?
+       FOR UPDATE`,
+      [sourceQueueId]
+    );
+
+    if (!sourceQueue) {
+      await conn.rollback();
+      return { status: 404, body: { success: false, message: 'Source queue was not found.' } };
+    }
+
+    if (!canAccessDepartment(req, sourceQueue.department_id)) {
+      await conn.rollback();
+      return { status: 403, body: { success: false, message: 'You cannot transfer this queue entry.' } };
+    }
+
+    if (sourceQueue.status !== 'done') {
+      await conn.rollback();
+      return { status: 400, body: { success: false, message: 'Only completed queues can be transferred.' } };
+    }
+
+    if (Number(sourceQueue.department_id) === targetDepartmentId) {
+      await conn.rollback();
+      return { status: 400, body: { success: false, message: 'Transfer to the same department is not allowed.' } };
+    }
+
+    const [existingTransfer] = await conn.execute(
+      `SELECT queue_id, code
+       FROM queues
+       WHERE referred_from_queue_id = ?
+       LIMIT 1`,
+      [sourceQueueId]
+    );
+
+    if (existingTransfer) {
+      await conn.rollback();
+      return {
+        status: 409,
+        body: {
+          success: false,
+          message: 'This queue has already been transferred.',
+          queue_id: existingTransfer.queue_id,
+          code: existingTransfer.code
+        }
+      };
+    }
+
+    const [targetDepartment] = await conn.execute(
+      `SELECT department_id, name, code, queue_status, pause_message, paused_until
+       FROM departments
+       WHERE department_id = ?
+       FOR UPDATE`,
+      [targetDepartmentId]
+    );
+
+    if (!targetDepartment) {
+      await conn.rollback();
+      return { status: 404, body: { success: false, message: 'Target department was not found.' } };
+    }
+
+    if (targetDepartment.queue_status !== 'open') {
+      await conn.rollback();
+      return {
+        status: 400,
+        body: {
+          success: false,
+          message: targetDepartment.pause_message || 'Target department is not accepting new queues.',
+          department_status: targetDepartment.queue_status,
+          pause_message: targetDepartment.pause_message,
+          paused_until: targetDepartment.paused_until
+        }
+      };
+    }
+
+    const code = await generateQueueCode(conn, targetDepartmentId);
+    const visitDescription = buildTransferVisitDescription(sourceQueue.visit_description, transferReason);
+
+    const insert = await conn.execute(
+      `INSERT INTO queues
+       (full_name, user_id, department_id, code, category, status, visit_description,
+        is_priority, is_emergency, ai_suggested_department, ai_category, ai_priority_level,
+        ai_reason, referred_from_queue_id, transfer_reason, transferred_by_user_id, transferred_at)
+       VALUES (?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        sourceQueue.full_name,
+        sourceQueue.user_id,
+        targetDepartmentId,
+        code,
+        sourceQueue.category,
+        visitDescription,
+        sourceQueue.is_priority || 0,
+        sourceQueue.is_emergency || 0,
+        sourceQueue.ai_suggested_department,
+        sourceQueue.ai_category,
+        sourceQueue.ai_priority_level,
+        sourceQueue.ai_reason,
+        sourceQueue.queue_id,
+        transferReason || null,
+        req.session.uid
+      ]
+    );
+
+    const newQueue = {
+      queue_id: Number(insert.insertId),
+      code,
+      full_name: sourceQueue.full_name,
+      user_id: sourceQueue.user_id,
+      department_id: targetDepartmentId,
+      department_name: targetDepartment.name,
+      category: sourceQueue.category,
+      status: 'waiting',
+      visit_description: visitDescription,
+      referred_from_queue_id: sourceQueue.queue_id,
+      transfer_reason: transferReason || null,
+      transferred_by_user_id: req.session.uid
+    };
+
+    await logQueueAction(conn, {
+      queue_id: sourceQueue.queue_id,
+      actor_user_id: req.session.uid,
+      department_id: sourceQueue.department_id,
+      action: 'transferred',
+      details: {
+        source_queue_id: sourceQueue.queue_id,
+        source_queue_code: sourceQueue.code,
+        target_queue_id: newQueue.queue_id,
+        target_queue_code: code,
+        source_department_id: sourceQueue.department_id,
+        source_department: sourceQueue.source_department_name,
+        target_department_id: targetDepartmentId,
+        target_department: targetDepartment.name,
+        reason: transferReason || null
+      }
+    });
+
+    await logQueueAction(conn, {
+      queue_id: newQueue.queue_id,
+      actor_user_id: req.session.uid,
+      department_id: targetDepartmentId,
+      action: 'queue_created_from_transfer',
+      details: {
+        source_queue_id: sourceQueue.queue_id,
+        source_queue_code: sourceQueue.code,
+        source_department_id: sourceQueue.department_id,
+        source_department: sourceQueue.source_department_name,
+        target_queue_code: code,
+        reason: transferReason || null
+      }
+    });
+
+    await conn.commit();
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        message: 'Patient transferred successfully.',
+        queue: newQueue
+      }
+    };
+  } catch (err) {
+    if (conn) await conn.rollback();
+    console.error('Queue transfer failed:', err);
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message: err.message || 'Queue transfer failed.'
+      }
+    };
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+ensureQueueTransferSchema();
+
+const AI_HISTORY_ALLOWED_STATUSES = ['waiting', 'serving', 'done', 'cancelled', 'no_show', 'void'];
+const AI_HISTORY_DEFAULT_STATUSES = ['done', 'cancelled', 'no_show', 'void'];
+const AI_HISTORY_STOP_WORDS = new Set([
+  'a',
+  'an',
+  'ago',
+  'and',
+  'around',
+  'at',
+  'checked',
+  'check',
+  'for',
+  'from',
+  'in',
+  'of',
+  'on',
+  'patient',
+  'patients',
+  'queue',
+  'the',
+  'to',
+  'visit',
+  'visited',
+  'with'
+]);
+
+let queueLogsTableExistsCache = null;
+
+function isValidDateFilter(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function getLocalDateForAi() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: process.env.APP_TIME_ZONE || process.env.TZ || 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function formatUtcDate(date) {
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0')
+  ].join('-');
+}
+
+function parseDateOnly(dateString) {
+  if (!isValidDateFilter(dateString)) return null;
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function shiftDateString(dateString, { days = 0, months = 0, years = 0 } = {}) {
+  const date = parseDateOnly(dateString);
+  if (!date) return null;
+  date.setUTCFullYear(date.getUTCFullYear() + years);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatUtcDate(date);
+}
+
+function startOfMonth(dateString) {
+  const date = parseDateOnly(dateString);
+  if (!date) return null;
+  date.setUTCDate(1);
+  return formatUtcDate(date);
+}
+
+function endOfMonth(dateString) {
+  const date = parseDateOnly(dateString);
+  if (!date) return null;
+  date.setUTCMonth(date.getUTCMonth() + 1);
+  date.setUTCDate(0);
+  return formatUtcDate(date);
+}
+
+function cleanKeyword(keyword) {
+  return String(keyword || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 80);
+}
+
+function normalizeKeywords(keywords) {
+  if (!Array.isArray(keywords)) return [];
+
+  const seen = new Set();
+  const normalized = [];
+
+  for (const keyword of keywords) {
+    const cleaned = cleanKeyword(keyword);
+    const lowered = cleaned.toLowerCase();
+
+    if (!cleaned || AI_HISTORY_STOP_WORDS.has(lowered) || seen.has(lowered)) {
+      continue;
+    }
+
+    seen.add(lowered);
+    normalized.push(cleaned);
+
+    if (normalized.length >= 8) break;
+  }
+
+  return normalized;
+}
+
+function normalizeAiSearchFilters(raw) {
+  const filters = raw && typeof raw === 'object' ? raw : {};
+  const status = typeof filters.status === 'string'
+    ? filters.status.trim().toLowerCase()
+    : null;
+
+  return {
+    date_from: isValidDateFilter(filters.date_from) ? filters.date_from : null,
+    date_to: isValidDateFilter(filters.date_to) ? filters.date_to : null,
+    keywords: normalizeKeywords(filters.keywords),
+    status: AI_HISTORY_ALLOWED_STATUSES.includes(status) ? status : null,
+    department: typeof filters.department === 'string'
+      ? cleanKeyword(filters.department) || null
+      : null
+  };
+}
+
+function extractFirstJsonObject(text) {
+  const source = String(text || '');
+
+  for (let start = 0; start < source.length; start += 1) {
+    if (source[start] !== '{') continue;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < source.length; index += 1) {
+      const char = source[index];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === '\\') {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === '{') {
+        depth += 1;
+      } else if (char === '}') {
+        depth -= 1;
+
+        if (depth === 0) {
+          const candidate = source.slice(start, index + 1);
+
+          try {
+            JSON.parse(candidate);
+            return candidate;
+          } catch (err) {
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseGroqJson(content) {
+  if (!content || typeof content !== 'string') {
+    throw new Error('Groq returned an empty response');
+  }
+
+  const trimmed = content.trim();
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (err) {
+    console.warn('Groq JSON parsing failed, attempting recovery');
+    const recovered = extractFirstJsonObject(trimmed);
+    if (!recovered) throw err;
+    return JSON.parse(recovered);
+  }
+}
+
+function extractFallbackKeywords(prompt) {
+  return normalizeKeywords(
+    String(prompt || '')
+      .split(/[^a-zA-Z0-9]+/)
+      .map(word => word.trim())
+      .filter(word => word.length >= 2)
+      .filter(word => !/^\d+$/.test(word))
+  );
+}
+
+function extractFallbackDateRange(prompt) {
+  const text = String(prompt || '').toLowerCase();
+  const today = getLocalDateForAi();
+
+  if (text.includes('today')) {
+    return { date_from: today, date_to: today };
+  }
+
+  if (text.includes('yesterday')) {
+    const yesterday = shiftDateString(today, { days: -1 });
+    return { date_from: yesterday, date_to: yesterday };
+  }
+
+  if (text.includes('last week')) {
+    return {
+      date_from: shiftDateString(today, { days: -7 }),
+      date_to: today
+    };
+  }
+
+  if (text.includes('last month')) {
+    const previousMonth = shiftDateString(today, { months: -1 });
+    return {
+      date_from: startOfMonth(previousMonth),
+      date_to: endOfMonth(previousMonth)
+    };
+  }
+
+  if (text.includes('last year')) {
+    const previousYear = String(Number(today.slice(0, 4)) - 1);
+    return {
+      date_from: `${previousYear}-01-01`,
+      date_to: `${previousYear}-12-31`
+    };
+  }
+
+  const yearsAgoMatch = text.match(/\b(\d{1,2})\s+years?\s+ago\b/);
+  if (yearsAgoMatch) {
+    const target = shiftDateString(today, { years: -Number(yearsAgoMatch[1]) });
+    return { date_from: target, date_to: target };
+  }
+
+  const explicitYearMatch = text.match(/\b(19\d{2}|20\d{2}|21\d{2})\b/);
+  if (explicitYearMatch) {
+    const year = explicitYearMatch[1];
+    return {
+      date_from: `${year}-01-01`,
+      date_to: `${year}-12-31`
+    };
+  }
+
+  return { date_from: null, date_to: null };
+}
+
+function extractFallbackStatus(prompt) {
+  const text = String(prompt || '').toLowerCase();
+
+  if (/\b(no[\s_-]?show|skipped|skip)\b/.test(text)) return 'no_show';
+  if (/\b(cancelled|canceled|cancel)\b/.test(text)) return 'cancelled';
+  if (/\bvoid(ed)?\b/.test(text)) return 'void';
+  if (/\b(serving|called|in progress)\b/.test(text)) return 'serving';
+  if (/\b(waiting|pending)\b/.test(text)) return 'waiting';
+  if (/\b(done|completed|finished|checked|seen)\b/.test(text)) return 'done';
+  return null;
+}
+
+async function detectDepartmentFromPrompt(conn, prompt) {
+  const text = String(prompt || '').toLowerCase();
+  const departments = await conn.execute(
+    `SELECT name, code
+     FROM departments
+     ORDER BY LENGTH(name) DESC, name ASC`
+  );
+
+  for (const department of departments) {
+    const name = String(department.name || '').toLowerCase();
+    const code = String(department.code || '').toLowerCase();
+    const codePattern = code
+      ? new RegExp(`(^|[^a-z0-9])${code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i')
+      : null;
+
+    if ((name && text.includes(name)) || (codePattern && codePattern.test(text))) {
+      return department.name;
+    }
+  }
+
+  return null;
+}
+
+async function buildFallbackSearchFilters(conn, prompt) {
+  const dateRange = extractFallbackDateRange(prompt);
+
+  return {
+    date_from: dateRange.date_from,
+    date_to: dateRange.date_to,
+    keywords: extractFallbackKeywords(prompt),
+    status: extractFallbackStatus(prompt),
+    department: await detectDepartmentFromPrompt(conn, prompt)
+  };
+}
+
+async function hasQueueLogsTable(conn) {
+  if (queueLogsTableExistsCache !== null) {
+    return queueLogsTableExistsCache;
+  }
+
+  const rows = await conn.execute(
+    `SELECT 1
+     FROM information_schema.tables
+     WHERE table_schema = DATABASE()
+       AND table_name = 'queue_logs'
+     LIMIT 1`
+  );
+
+  queueLogsTableExistsCache = !!rows.length;
+  return queueLogsTableExistsCache;
+}
+
+function buildHistorySearchQuery({ filters, session, includeQueueLogs, limit = 100 }) {
+  const where = [];
+  const params = [];
+  const joins = ['JOIN departments d ON d.department_id = q.department_id'];
+  joins.push('LEFT JOIN queues tq ON tq.referred_from_queue_id = q.queue_id');
+
+  if (includeQueueLogs) {
+    joins.push('LEFT JOIN queue_logs ql ON ql.queue_id = q.queue_id');
+  }
+
+  if (session.role === 'staff') {
+    where.push('q.department_id = ?');
+    params.push(session.department_id);
+  } else if (filters.department) {
+    const like = `%${filters.department}%`;
+    where.push('(d.name LIKE ? OR d.code LIKE ?)');
+    params.push(like, like);
+  }
+
+  if (filters.status) {
+    where.push('q.status = ?');
+    params.push(filters.status);
+  } else {
+    where.push(`q.status IN (${AI_HISTORY_DEFAULT_STATUSES.map(() => '?').join(', ')})`);
+    params.push(...AI_HISTORY_DEFAULT_STATUSES);
+  }
+
+  if (filters.date_from) {
+    const fromDateTime = `${filters.date_from} 00:00:00`;
+    const clauses = ['q.created_at >= ?', 'q.called_at >= ?', 'q.finished_at >= ?'];
+    params.push(fromDateTime, fromDateTime, fromDateTime);
+
+    if (includeQueueLogs) {
+      clauses.push('ql.created_at >= ?');
+      params.push(fromDateTime);
+    }
+
+    where.push(`(${clauses.join(' OR ')})`);
+  }
+
+  if (filters.date_to) {
+    const toDateTime = `${filters.date_to} 23:59:59`;
+    const clauses = ['q.created_at <= ?', 'q.called_at <= ?', 'q.finished_at <= ?'];
+    params.push(toDateTime, toDateTime, toDateTime);
+
+    if (includeQueueLogs) {
+      clauses.push('ql.created_at <= ?');
+      params.push(toDateTime);
+    }
+
+    where.push(`(${clauses.join(' OR ')})`);
+  }
+
+  if (filters.keywords.length) {
+    for (const keyword of filters.keywords) {
+      const like = `%${keyword}%`;
+      const clauses = [
+        'q.code LIKE ?',
+        'q.full_name LIKE ?',
+        'q.category LIKE ?',
+        'q.visit_description LIKE ?',
+        'q.status LIKE ?',
+        'd.name LIKE ?',
+        'd.code LIKE ?'
+      ];
+      params.push(like, like, like, like, like, like, like);
+
+      if (includeQueueLogs) {
+        clauses.push('ql.action LIKE ?');
+        clauses.push('ql.details LIKE ?');
+        params.push(like, like);
+      }
+
+      where.push(`(${clauses.join(' OR ')})`);
+    }
+  }
+
+  return {
+    sql: `SELECT DISTINCT
+            q.queue_id,
+            q.code,
+            q.full_name,
+            d.name AS department_name,
+            q.department_id,
+            q.category,
+            q.status,
+            q.visit_description,
+            q.referred_from_queue_id,
+            q.transfer_reason,
+            q.transferred_by_user_id,
+            q.transferred_at,
+            tq.queue_id AS transferred_queue_id,
+            tq.code AS transferred_queue_code,
+            q.created_at,
+            q.called_at,
+            q.finished_at
+          FROM queues q
+          ${joins.join('\n          ')}
+          WHERE ${where.length ? where.join(' AND ') : '1=1'}
+          ORDER BY COALESCE(q.finished_at, q.called_at, q.created_at) DESC,
+                   q.queue_id DESC
+          LIMIT ${Number(limit)}`,
+    params
+  };
+}
+
+async function promptToQueueSearchFilters(prompt) {
+  if (!groq) {
+    const err = new Error('GROQ_API_KEY is not configured');
+    err.statusCode = 503;
+    throw err;
+  }
+
+  console.info('Calling Groq for queue history search');
+
+  const today = getLocalDateForAi();
+  const completion = await groq.chat.completions.create({
+    model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: [
+          'You convert clinic queue history search requests into strict JSON filters.',
+          'Return JSON only.',
+          'Do not explain.',
+          'Do not write SQL.',
+          'Use null when a field is unknown.',
+          'Do not invent departments.',
+          `Current date is the server date: ${today}.`
+        ].join('\n')
+      },
+      {
+        role: 'user',
+        content: [
+          'Return exactly this JSON shape:',
+          '{',
+          '  "date_from": null,',
+          '  "date_to": null,',
+          '  "keywords": [],',
+          '  "status": null,',
+          '  "department": null',
+          '}',
+          'Allowed status values: waiting, serving, done, cancelled, no_show, void, null.',
+          `Prompt: ${prompt}`
+        ].join('\n')
+      }
+    ]
+  });
+
+  const filters = normalizeAiSearchFilters(parseGroqJson(completion.choices?.[0]?.message?.content));
+
+  if (!filters.keywords.length && !filters.status && !filters.department && !filters.date_from && !filters.date_to) {
+    filters.keywords = extractFallbackKeywords(prompt);
+  }
+
+  return filters;
+}
+
+const AI_VISIT_ALLOWED_CATEGORIES = ['general', 'support', 'priority', 'complaint'];
+const AI_VISIT_ALLOWED_PRIORITY_LEVELS = ['normal', 'priority', 'urgent_review'];
+
+function normalizeVisitConcernClassification(raw, availableDepartments) {
+  const departmentSet = new Set((availableDepartments || []).map(name => String(name || '').trim().toLowerCase()));
+  const suggestion = raw && typeof raw === 'object' ? raw : {};
+  const suggestedDepartmentRaw = typeof suggestion.suggested_department === 'string'
+    ? suggestion.suggested_department.trim()
+    : '';
+  const suggestedDepartment = suggestedDepartmentRaw && departmentSet.has(suggestedDepartmentRaw.toLowerCase())
+    ? suggestedDepartmentRaw
+    : null;
+  const categoryRaw = typeof suggestion.category === 'string'
+    ? suggestion.category.trim().toLowerCase()
+    : '';
+  const priorityRaw = typeof suggestion.priority_level === 'string'
+    ? suggestion.priority_level.trim().toLowerCase()
+    : '';
+  const reason = typeof suggestion.reason === 'string'
+    ? suggestion.reason.trim().replace(/\s+/g, ' ').slice(0, 180)
+    : '';
+
+  return {
+    suggested_department: suggestedDepartment,
+    category: AI_VISIT_ALLOWED_CATEGORIES.includes(categoryRaw) ? categoryRaw : 'general',
+    priority_level: AI_VISIT_ALLOWED_PRIORITY_LEVELS.includes(priorityRaw) ? priorityRaw : 'normal',
+    reason
+  };
+}
+
+async function classifyVisitConcern({ concern, availableDepartments }) {
+  if (!groq) return null;
+
+  const concernText = String(concern || '').trim();
+  if (!concernText) return null;
+
+  const departmentNames = (availableDepartments || [])
+    .map(name => String(name || '').trim())
+    .filter(Boolean);
+
+  if (!departmentNames.length) return null;
+
+  try {
+    console.info('Calling Groq for visit concern classification');
+    const completion = await groq.chat.completions.create({
+      model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You classify clinic queue visit concerns into a suggested department and priority level.',
+            'Return JSON only.',
+            'Do not diagnose.',
+            'Do not recommend treatment.',
+            'If the concern sounds severe, use urgent_review, not emergency.',
+            'Use only the provided department names.',
+            'If unsure, use null for suggested_department.',
+            'Keep the reason short.'
+          ].join('\n')
+        },
+        {
+          role: 'user',
+          content: [
+            'Return exactly this JSON shape:',
+            '{',
+            '  "suggested_department": null,',
+            '  "category": "general",',
+            '  "priority_level": "normal",',
+            '  "reason": ""',
+            '}',
+            `Allowed departments: ${JSON.stringify(departmentNames)}`,
+            `Allowed category values: ${JSON.stringify(AI_VISIT_ALLOWED_CATEGORIES)}`,
+            `Concern: ${concernText}`
+          ].join('\n')
+        }
+      ]
+    });
+
+    const parsed = parseGroqJson(completion.choices?.[0]?.message?.content);
+    return normalizeVisitConcernClassification(parsed, departmentNames);
+  } catch (err) {
+    console.error('Groq visit concern classification failed:', err.message);
+    return null;
+  }
+}
+
+async function getDepartmentNames(conn) {
+  const departmentRows = await conn.execute(
+    `SELECT name
+     FROM departments
+     ORDER BY name ASC`
+  );
+
+  return departmentRows
+    .map(row => String(row.name || '').trim())
+    .filter(Boolean);
+}
+
+function normalizeVisitConcernPayload(rawAi, availableDepartments) {
+  if (!rawAi || typeof rawAi !== 'object') {
+    return null;
+  }
+
+  return normalizeVisitConcernClassification(rawAi, availableDepartments);
+}
+
 
 
 app.post('/api/queue', async (req, res) => {
@@ -108,6 +1101,7 @@ app.post('/api/queue', async (req, res) => {
 
   const uid = req.session.uid;
   if (!uid) return res.status(401).json({ error: 'Not logged in' });
+  const enforceUserActiveQueue = !['owner', 'admin', 'staff'].includes(req.session.role);
   const { categCheck } = req.body;
   let categoryComplete = {
     A: 'Aisthecategory',
@@ -123,22 +1117,70 @@ app.post('/api/queue', async (req, res) => {
 
     await conn.beginTransaction();
 
+    const [userLock] = await conn.execute(
+      `SELECT user_id
+       FROM users
+       WHERE user_id = ?
+       FOR UPDATE`,
+      [uid]
+    );
+
+    if (!userLock) {
+      await conn.rollback();
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized',
+        error: 'Unauthorized'
+      });
+    }
+
     const [department] = await conn.execute(
       `SELECT department_id, code, queue_status, pause_message, paused_until
 	       FROM departments
-	       WHERE name = ?`,
+	       WHERE name = ?
+	       FOR UPDATE`,
       [departmentName]
     );
 
     if (!department) {
       await conn.rollback();
-      return res.status(400).json({ error: 'Department not found' });
+      return res.status(400).json({
+        success: false,
+        message: 'Department not found',
+        error: 'Department not found'
+      });
+    }
+
+    if (enforceUserActiveQueue) {
+      const [activeQueue] = await conn.execute(
+        `SELECT queue_id, code
+         FROM queues
+         WHERE user_id = ?
+           AND status IN ('waiting', 'serving')
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [uid]
+      );
+
+      if (activeQueue) {
+        await conn.rollback();
+        return res.status(409).json({
+          success: false,
+          message: 'You already have an active queue.',
+          error: 'You already have an active queue.',
+          queue_id: activeQueue.queue_id,
+          code: activeQueue.code
+        });
+      }
     }
 
     if (department.queue_status !== 'open') {
       await conn.rollback();
       return res.status(403).json({
-        error: department.pause_message || 'This department is currently not accepting queues',
+        success: false,
+        message: department.pause_message || 'Queue is currently closed.',
+        error: department.pause_message || 'Queue is currently closed.',
         department_status: department.queue_status,
         pause_message: department.pause_message,
         paused_until: department.paused_until
@@ -168,11 +1210,16 @@ app.post('/api/queue', async (req, res) => {
       [uid, department.department_id, code]
     );
 
-    await conn.execute(
-      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
-	       VALUES (?, ?, 'created')`,
-      [dbres.insertId, uid]
-    );
+    await logQueueAction(conn, {
+      queue_id: dbres.insertId,
+      actor_user_id: uid,
+      department_id: department.department_id,
+      action: enforceUserActiveQueue ? 'queue_created' : 'admin_added_queue',
+      details: {
+        code,
+        source: enforceUserActiveQueue ? 'patient' : 'admin'
+      }
+    });
 
     await conn.commit();
 
@@ -235,17 +1282,19 @@ app.get('/api/admin/staff', reqLogin, reqAdmin, async (req, res) => {
           u.full_name,
           u.username,
           u.contact_number,
+          u.role,
           u.department_id,
           d.name AS department_name
        FROM users u
        LEFT JOIN departments d ON d.department_id = u.department_id
-       WHERE u.role = 'staff'
-       ORDER BY u.full_name ASC, u.username ASC`
+       WHERE u.role IN ('admin', 'staff')
+       ORDER BY FIELD(u.role, 'admin', 'staff'), u.full_name ASC, u.username ASC`
     );
 
     return res.json({
       success: true,
-      staff: rows
+      staff: rows,
+      current_user_id: Number(req.session.uid)
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -275,9 +1324,34 @@ app.get('/api/departments/status', reqLogin, async (req, res) => {
 	       ORDER BY d.name ASC`
     );
 
+    const schedules = await conn.execute(
+      `SELECT
+          schedule_id,
+          department_id,
+          day_of_week,
+          TIME_FORMAT(opens_at, '%H:%i') AS opens_at,
+          TIME_FORMAT(closes_at, '%H:%i') AS closes_at,
+          is_closed,
+          note
+       FROM department_schedules
+       ORDER BY department_id ASC, day_of_week ASC`
+    );
+
+    const schedulesByDepartment = schedules.reduce((acc, schedule) => {
+      const key = String(schedule.department_id);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(schedule);
+      return acc;
+    }, {});
+
+    const departments = rows.map(row => ({
+      ...row,
+      schedules: schedulesByDepartment[String(row.department_id)] || []
+    }));
+
     return res.json({
       success: true,
-      departments: rows
+      departments
     });
   } catch (err) {
     console.error(err);
@@ -306,6 +1380,7 @@ app.patch('/api/admin/departments/:department_id/queue-status', reqLogin, reqSta
 
   try {
     conn = await pool.getConnection();
+    await conn.beginTransaction();
 
     const result = await conn.execute(
       `UPDATE departments
@@ -317,8 +1392,23 @@ app.patch('/api/admin/departments/:department_id/queue-status', reqLogin, reqSta
     );
 
     if (result.affectedRows === 0) {
+      await conn.rollback();
       return res.status(404).json({ error: 'Department not found' });
     }
+
+    await logQueueAction(conn, {
+      actor_user_id: req.session.uid,
+      department_id,
+      action: 'status_changed',
+      details: {
+        scope: 'department_queue_status',
+        queue_status: queueStatus,
+        pause_message: pauseMessage,
+        paused_until: pausedUntil
+      }
+    });
+
+    await conn.commit();
 
     return res.json({
       success: true,
@@ -328,6 +1418,7 @@ app.patch('/api/admin/departments/:department_id/queue-status', reqLogin, reqSta
       paused_until: pausedUntil
     });
   } catch (err) {
+    if (conn) await conn.rollback();
     console.error(err);
     return res.status(500).json({ error: err.message });
   } finally {
@@ -376,7 +1467,192 @@ app.post('/api/admin/staff', reqLogin, reqAdmin, async (req, res) => {
   }
 });
 
-app.patch('/api/admin/staff/:user_id/department', reqLogin, reqStaffOrAdmin, async (req, res) => {
+app.patch('/api/admin/staff/:user_id', reqLogin, reqAdmin, async (req, res) => {
+  const { user_id } = req.params;
+  const fullName = String(req.body.fullName || '').trim();
+  const contact = String(req.body.contact || '').trim();
+  const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '');
+  const role = String(req.body.role || '').trim();
+  const departmentId = req.body.departmentId || null;
+
+  if (!fullName || !username || !role) {
+    return res.status(400).json({ error: 'Name, username, and role are required' });
+  }
+
+  if (!['admin', 'staff'].includes(role)) {
+    return res.status(400).json({ error: 'Role must be admin or staff' });
+  }
+
+  if (role === 'staff' && !departmentId) {
+    return res.status(400).json({ error: 'Staff accounts require an assigned department' });
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [account] = await conn.execute(
+      `SELECT user_id, role
+       FROM users
+       WHERE user_id = ? AND role IN ('admin', 'staff')
+       FOR UPDATE`,
+      [user_id]
+    );
+
+    if (!account) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Staff account not found' });
+    }
+
+    if (Number(account.user_id) === Number(req.session.uid) && account.role !== role) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'You cannot change your own role from Staff Management' });
+    }
+
+    if (account.role === 'admin' && role !== 'admin') {
+      const [adminCountRow] = await conn.execute(
+        `SELECT COUNT(*) AS admin_count
+         FROM users
+         WHERE role IN ('owner', 'admin')`
+      );
+
+      if (Number(adminCountRow.admin_count) <= 1) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Cannot remove the last remaining admin' });
+      }
+    }
+
+    if (departmentId) {
+      const [department] = await conn.execute(
+        `SELECT department_id FROM departments WHERE department_id = ?`,
+        [departmentId]
+      );
+
+      if (!department) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Department not found' });
+      }
+    }
+
+    const fields = [
+      'full_name = ?',
+      'contact_number = ?',
+      'username = ?',
+      'role = ?',
+      'department_id = ?'
+    ];
+    const values = [
+      fullName,
+      contact || null,
+      username,
+      role,
+      role === 'staff' ? departmentId : (departmentId || null)
+    ];
+
+    if (password) {
+      fields.push('password_hash = ?');
+      values.push(await bcrypt.hash(password, 10));
+    }
+
+    values.push(user_id);
+
+    await conn.execute(
+      `UPDATE users
+       SET ${fields.join(', ')}
+       WHERE user_id = ? AND role IN ('admin', 'staff')`,
+      values
+    );
+
+    await conn.commit();
+    return res.json({ success: true });
+  } catch (err) {
+    if (conn) await conn.rollback();
+
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Username or contact number is already in use' });
+    }
+
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.delete('/api/admin/staff', reqLogin, reqAdmin, async (req, res) => {
+  const userIds = Array.isArray(req.body.user_ids)
+    ? req.body.user_ids.map(id => Number(id)).filter(id => Number.isInteger(id) && id > 0)
+    : [];
+  const uniqueUserIds = [...new Set(userIds)];
+
+  if (!uniqueUserIds.length) {
+    return res.status(400).json({ error: 'Select at least one staff account to delete' });
+  }
+
+  if (uniqueUserIds.includes(Number(req.session.uid))) {
+    return res.status(400).json({ error: 'You cannot delete your own account from Staff Management' });
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const placeholders = uniqueUserIds.map(() => '?').join(', ');
+    const selectedAccounts = await conn.execute(
+      `SELECT user_id, role
+       FROM users
+       WHERE user_id IN (${placeholders}) AND role IN ('admin', 'staff')
+       FOR UPDATE`,
+      uniqueUserIds
+    );
+
+    if (selectedAccounts.length !== uniqueUserIds.length) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'One or more selected accounts cannot be deleted' });
+    }
+
+    const deletingAdminCount = selectedAccounts
+      .filter(account => ['owner', 'admin'].includes(account.role))
+      .length;
+
+    if (deletingAdminCount > 0) {
+      const [adminCountRow] = await conn.execute(
+        `SELECT COUNT(*) AS admin_count
+         FROM users
+         WHERE role IN ('owner', 'admin')`
+      );
+
+      if (Number(adminCountRow.admin_count) - deletingAdminCount < 1) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Cannot delete the last remaining admin' });
+      }
+    }
+
+    // The users table has no deleted_at/status column, so this is a guarded permanent delete.
+    const result = await conn.execute(
+      `DELETE FROM users
+       WHERE user_id IN (${placeholders}) AND role IN ('admin', 'staff')`,
+      uniqueUserIds
+    );
+
+    await conn.commit();
+    return res.json({
+      success: true,
+      deleted_count: Number(result.affectedRows || 0)
+    });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.patch('/api/admin/staff/:user_id/department', reqLogin, reqAdmin, async (req, res) => {
   const { user_id } = req.params;
   const { departmentId } = req.body;
 
@@ -560,8 +1836,14 @@ app.get('/api/queue/status', reqLogin, async (req, res) => {
           q.queue_id,
           q.code,
           q.full_name,
-          q.status,
           q.department_id,
+          q.status,
+          q.referred_from_queue_id,
+          rd.name AS referred_from_department_name,
+          q.ai_suggested_department,
+          q.ai_category,
+          q.ai_priority_level,
+          q.ai_reason,
           d.name AS department_name,
           d.queue_status AS department_queue_status,
           (
@@ -573,6 +1855,8 @@ app.get('/api/queue/status', reqLogin, async (req, res) => {
           ) AS ahead
        FROM queues q
        JOIN departments d ON d.department_id = q.department_id
+       LEFT JOIN queues rq ON rq.queue_id = q.referred_from_queue_id
+       LEFT JOIN departments rd ON rd.department_id = rq.department_id
        WHERE q.user_id = ?
          AND q.status IN ('waiting', 'serving')
        ORDER BY q.created_at DESC
@@ -594,7 +1878,20 @@ app.get('/api/queue/status', reqLogin, async (req, res) => {
         status: row.status,
         department_id: row.department_id,
         department_name: row.department_name,
-        ahead: Number(row.ahead || 0)
+        referred_from_queue_id: row.referred_from_queue_id,
+        referred_from_department_name: row.referred_from_department_name,
+        referral_message: row.referred_from_queue_id
+          ? `You have been referred to ${row.department_name}.`
+          : null,
+        ahead: Number(row.ahead || 0),
+        ai: row.ai_suggested_department || row.ai_category || row.ai_priority_level || row.ai_reason
+          ? {
+            suggested_department: row.ai_suggested_department || null,
+            category: row.ai_category || 'general',
+            priority_level: row.ai_priority_level || 'normal',
+            reason: row.ai_reason || ''
+          }
+          : null
       });
     }
 
@@ -626,6 +1923,90 @@ app.get('/api/queue/status', reqLogin, async (req, res) => {
     });
   } finally {
     if (conn) conn.release();
+  }
+});
+
+app.patch('/api/queue/cancel', reqLogin, async (req, res) => {
+  const uid = req.session.uid;
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [userLock] = await conn.execute(
+      `SELECT user_id
+       FROM users
+       WHERE user_id = ?
+       FOR UPDATE`,
+      [uid]
+    );
+
+    if (!userLock) {
+      await conn.rollback();
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized',
+        error: 'Unauthorized'
+      });
+    }
+
+    const [queue] = await conn.execute(
+      `SELECT queue_id, code, status, department_id
+       FROM queues
+       WHERE user_id = ?
+         AND status IN ('waiting', 'serving')
+       ORDER BY created_at DESC, queue_id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [uid]
+    );
+
+    if (!queue || queue.status !== 'waiting') {
+      await conn.rollback();
+      return res.status(409).json({
+        success: false,
+        message: 'Only waiting queues can be cancelled.',
+        error: 'Only waiting queues can be cancelled.'
+      });
+    }
+
+    await conn.execute(
+      `UPDATE queues
+       SET status = 'cancelled',
+           finished_at = COALESCE(finished_at, NOW())
+       WHERE queue_id = ?
+         AND status = 'waiting'`,
+      [queue.queue_id]
+    );
+
+    await logQueueAction(conn, {
+      queue_id: queue.queue_id,
+      actor_user_id: uid,
+      department_id: queue.department_id,
+      action: 'queue_cancelled',
+      details: {
+        code: queue.code,
+        cancelled_by: 'patient'
+      }
+    });
+
+    await conn.commit();
+
+    return res.json({
+      success: true,
+      message: 'Queue cancelled.',
+      queue_id: queue.queue_id,
+      code: queue.code
+    });
+  } catch (err) {
+    await conn.rollback();
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      error: err.message
+    });
+  } finally {
+    conn.release();
   }
 });
 
@@ -793,6 +2174,10 @@ app.get('/api/admin/dashboard/department/:department_id', reqLogin, reqStaffOrAd
           q.visit_description,
           q.is_priority,
           q.is_emergency,
+          q.ai_suggested_department,
+          q.ai_category,
+          q.ai_priority_level,
+          q.ai_reason,
           q.created_at,
 	          q.called_at,
 	          q.finished_at,
@@ -1094,20 +2479,199 @@ app.delete('/api/admin/counters/:counter_id', reqLogin, reqAdmin, async (req, re
   }
 });
 
+app.get('/api/admin/schedules', reqLogin, reqAdmin, async (req, res) => {
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const rows = await conn.execute(
+      `SELECT
+          s.schedule_id,
+          s.department_id,
+          d.name AS department_name,
+          s.day_of_week,
+          TIME_FORMAT(s.opens_at, '%H:%i') AS opens_at,
+          TIME_FORMAT(s.closes_at, '%H:%i') AS closes_at,
+          s.is_closed,
+          s.note
+       FROM department_schedules s
+       JOIN departments d ON d.department_id = s.department_id
+       ORDER BY d.name ASC, s.day_of_week ASC`
+    );
+
+    return res.json({
+      success: true,
+      schedules: rows
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.post('/api/admin/schedules', reqLogin, reqAdmin, async (req, res) => {
+  const schedule = normalizeSchedulePayload(req.body);
+
+  if (schedule.error) {
+    return res.status(400).json({ error: schedule.error });
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const [department] = await conn.execute(
+      `SELECT department_id FROM departments WHERE department_id = ?`,
+      [schedule.departmentId]
+    );
+
+    if (!department) {
+      return res.status(400).json({ error: 'Department not found' });
+    }
+
+    await conn.execute(
+      `INSERT INTO department_schedules
+         (department_id, day_of_week, opens_at, closes_at, is_closed, note)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         opens_at = VALUES(opens_at),
+         closes_at = VALUES(closes_at),
+         is_closed = VALUES(is_closed),
+         note = VALUES(note)`,
+      [
+        schedule.departmentId,
+        schedule.dayOfWeek,
+        schedule.opensAt,
+        schedule.closesAt,
+        schedule.isClosed ? 1 : 0,
+        schedule.note
+      ]
+    );
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.patch('/api/admin/schedules/:schedule_id', reqLogin, reqAdmin, async (req, res) => {
+  const { schedule_id } = req.params;
+  const schedule = normalizeSchedulePayload(req.body);
+
+  if (schedule.error) {
+    return res.status(400).json({ error: schedule.error });
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const [department] = await conn.execute(
+      `SELECT department_id FROM departments WHERE department_id = ?`,
+      [schedule.departmentId]
+    );
+
+    if (!department) {
+      return res.status(400).json({ error: 'Department not found' });
+    }
+
+    const result = await conn.execute(
+      `UPDATE department_schedules
+       SET department_id = ?,
+           day_of_week = ?,
+           opens_at = ?,
+           closes_at = ?,
+           is_closed = ?,
+           note = ?
+       WHERE schedule_id = ?`,
+      [
+        schedule.departmentId,
+        schedule.dayOfWeek,
+        schedule.opensAt,
+        schedule.closesAt,
+        schedule.isClosed ? 1 : 0,
+        schedule.note,
+        schedule_id
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'This department already has a schedule for that day' });
+    }
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.delete('/api/admin/schedules/:schedule_id', reqLogin, reqAdmin, async (req, res) => {
+  const { schedule_id } = req.params;
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const result = await conn.execute(
+      `DELETE FROM department_schedules WHERE schedule_id = ?`,
+      [schedule_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 app.patch('/api/admin/queue-status', reqLogin, reqStaffOrAdmin, async (req, res) => {
   const { queueOpen } = req.body;
   const queueStatus = queueOpen ? 'open' : 'closed';
   let conn;
   try {
     conn = await pool.getConnection();
+    await conn.beginTransaction();
     await conn.execute(
       `INSERT INTO system_settings (id, queue_status)
        VALUES (1, ?)
        ON DUPLICATE KEY UPDATE queue_status = VALUES(queue_status)`,
       [queueStatus]
     );
+
+    await logQueueAction(conn, {
+      actor_user_id: req.session.uid,
+      action: 'status_changed',
+      details: {
+        scope: 'global_queue_status',
+        queue_status: queueStatus
+      }
+    });
+
+    await conn.commit();
     return res.json({ success: true, queue_status: queueStatus });
   } catch (err) {
+    if (conn) await conn.rollback();
     return res.status(500).json({ error: err.message });
   } finally {
     if (conn) conn.release();
@@ -1154,17 +2718,101 @@ app.patch('/api/admin/skip/:queue_id', reqLogin, reqStaffOrAdmin, async (req, re
       [queue_id]
     );
 
-    await conn.execute(
-      `INSERT INTO queue_logs (queue_id, actor_user_id, action, notes)
-	       VALUES (?, ?, 'no_show', ?)`,
-      [queue_id, req.session.uid, req.body && req.body.notes ? req.body.notes : null]
-    );
+    await logQueueAction(conn, {
+      queue_id,
+      actor_user_id: req.session.uid,
+      department_id: queue.department_id,
+      action: 'skipped',
+      details: {
+        notes: req.body && req.body.notes ? req.body.notes : null
+      }
+    });
 
     await conn.commit();
     res.json({ success: true });
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.patch('/api/admin/cancel/:queue_id', reqLogin, reqStaffOrAdmin, async (req, res) => {
+  const { queue_id } = req.params;
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [queue] = await conn.execute(
+      `SELECT queue_id, department_id, status
+       FROM queues
+       WHERE queue_id = ?
+       FOR UPDATE`,
+      [queue_id]
+    );
+
+    if (!queue) {
+      await conn.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Queue entry not found',
+        error: 'Queue entry not found'
+      });
+    }
+
+    if (!canAccessDepartment(req, queue.department_id)) {
+      await conn.rollback();
+      return res.status(403).json({
+        success: false,
+        message: 'You cannot cancel this queue entry',
+        error: 'You cannot cancel this queue entry'
+      });
+    }
+
+    if (queue.status !== 'waiting') {
+      await conn.rollback();
+      return res.status(409).json({
+        success: false,
+        message: 'Only waiting queues can be cancelled.',
+        error: 'Only waiting queues can be cancelled.'
+      });
+    }
+
+    await conn.execute(
+      `UPDATE queues
+       SET status = 'cancelled',
+           finished_at = COALESCE(finished_at, NOW())
+       WHERE queue_id = ?
+         AND status = 'waiting'`,
+      [queue_id]
+    );
+
+    await logQueueAction(conn, {
+      queue_id,
+      actor_user_id: req.session.uid,
+      department_id: queue.department_id,
+      action: 'queue_cancelled',
+      details: {
+        cancelled_by: 'admin'
+      }
+    });
+
+    await conn.commit();
+
+    return res.json({
+      success: true,
+      message: 'Queue cancelled.',
+      queue_id: Number(queue_id)
+    });
+  } catch (err) {
+    await conn.rollback();
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      error: err.message
+    });
   } finally {
     conn.release();
   }
@@ -1177,7 +2825,7 @@ app.delete('/api/admin/delete/:queue_id', reqLogin, reqStaffOrAdmin, async (req,
     await conn.beginTransaction();
 
     const [queue] = await conn.execute(
-      `SELECT queue_id, department_id
+      `SELECT queue_id, department_id, status
        FROM queues
        WHERE queue_id = ?`,
       [queue_id]
@@ -1209,11 +2857,16 @@ app.delete('/api/admin/delete/:queue_id', reqLogin, reqStaffOrAdmin, async (req,
       [queue_id]
     );
 
-    await conn.execute(
-      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
-	       VALUES (?, ?, 'void')`,
-      [queue_id, req.session.uid]
-    );
+    await logQueueAction(conn, {
+      queue_id,
+      actor_user_id: req.session.uid,
+      department_id: queue.department_id,
+      action: 'deleted',
+      details: {
+        previous_status: queue.status,
+        deleted_as: 'void'
+      }
+    });
 
     await conn.commit();
     res.json({ success: true });
@@ -1260,11 +2913,15 @@ app.post('/api/admin/served', reqLogin, reqStaffOrAdmin, async (req, res) => {
     );
 
     for (const row of servingRows) {
-      await conn.execute(
-        `INSERT INTO queue_logs (queue_id, actor_user_id, counter_id, action)
-	         VALUES (?, ?, ?, 'served')`,
-        [row.queue_id, req.session.uid, row.counter_id || null]
-      );
+      await logQueueAction(conn, {
+        queue_id: row.queue_id,
+        actor_user_id: req.session.uid,
+        department_id,
+        action: 'served',
+        details: {
+          counter_id: row.counter_id || null
+        }
+      });
     }
 
     await conn.commit();
@@ -1301,11 +2958,16 @@ app.post('/api/admin/clear', reqLogin, reqStaffOrAdmin, async (req, res) => {
     );
 
     for (const row of rows) {
-      await conn.execute(
-        `INSERT INTO queue_logs (queue_id, actor_user_id, action, notes)
-	         VALUES (?, ?, 'void', 'Queue cleared')`,
-        [row.queue_id, req.session.uid]
-      );
+      await logQueueAction(conn, {
+        queue_id: row.queue_id,
+        actor_user_id: req.session.uid,
+        department_id,
+        action: 'cleared',
+        details: {
+          previous_status: 'waiting',
+          new_status: 'void'
+        }
+      });
     }
 
     await conn.commit();
@@ -1322,13 +2984,34 @@ app.post('/api/admin/clear', reqLogin, reqStaffOrAdmin, async (req, res) => {
 app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
   const { department_id, counter_id } = req.body;
   if (!canAccessDepartment(req, department_id)) {
-    return res.status(403).json({ error: 'You cannot update this department' });
+    return res.status(403).json({
+      success: false,
+      message: 'You cannot update this department',
+      error: 'You cannot update this department'
+    });
   }
 
   const conn = await pool.getConnection();
 
   try {
     await conn.beginTransaction();
+
+    const [departmentLock] = await conn.execute(
+      `SELECT department_id
+       FROM departments
+       WHERE department_id = ?
+       FOR UPDATE`,
+      [department_id]
+    );
+
+    if (!departmentLock) {
+      await conn.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Department not found',
+        error: 'Department not found'
+      });
+    }
 
     let selectedCounter = null;
 
@@ -1338,18 +3021,27 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
 	         FROM counters
 	         WHERE counter_id = ?
 	           AND department_id = ?
-	           AND deleted_at IS NULL`,
+	           AND deleted_at IS NULL
+	         FOR UPDATE`,
         [counter_id, department_id]
       );
 
       if (!counter) {
         await conn.rollback();
-        return res.status(400).json({ error: 'Counter not found for this department' });
+        return res.status(400).json({
+          success: false,
+          message: 'Counter not found for this department',
+          error: 'Counter not found for this department'
+        });
       }
 
       if (counter.status !== 'open') {
         await conn.rollback();
-        return res.status(400).json({ error: 'Selected counter is not open' });
+        return res.status(400).json({
+          success: false,
+          message: 'Selected counter is not open',
+          error: 'Selected counter is not open'
+        });
       }
 
       selectedCounter = counter;
@@ -1361,19 +3053,51 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
 	           AND status = 'open'
 	           AND deleted_at IS NULL
 	         ORDER BY counter_id ASC
-	         LIMIT 1`,
+	         LIMIT 1
+	         FOR UPDATE`,
         [department_id]
       );
 
       selectedCounter = counter || null;
     }
 
+    const [recentServing] = await conn.execute(
+      `SELECT q.queue_id, q.code, q.full_name, q.category, c.counter_id, c.name AS counter_name
+       FROM queues q
+       LEFT JOIN counters c ON c.current_queue_id = q.queue_id
+       WHERE q.department_id = ?
+         AND q.status = 'serving'
+         AND q.called_at >= NOW() - INTERVAL 2 SECOND
+       ORDER BY q.called_at DESC, q.queue_id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [department_id]
+    );
+
+    if (recentServing) {
+      await conn.commit();
+      return res.json({
+        success: true,
+        next: recentServing,
+        message: 'Call Next is already processing the current queue.'
+      });
+    }
+
     const servingRows = await conn.execute(
-      `SELECT q.queue_id, c.counter_id
+      `SELECT q.queue_id,
+              q.code,
+              q.full_name,
+              q.department_id,
+              d.name AS department_name,
+              q.category,
+              q.status,
+              c.counter_id
 	       FROM queues q
+	       JOIN departments d ON d.department_id = q.department_id
 	       LEFT JOIN counters c ON c.current_queue_id = q.queue_id
 	       WHERE q.department_id = ?
-	         AND q.status = 'serving'`,
+	         AND q.status = 'serving'
+	       FOR UPDATE`,
       [department_id]
     );
 
@@ -1395,11 +3119,16 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
     );
 
     for (const row of servingRows) {
-      await conn.execute(
-        `INSERT INTO queue_logs (queue_id, actor_user_id, counter_id, action)
-	         VALUES (?, ?, ?, 'served')`,
-        [row.queue_id, req.session.uid, row.counter_id || null]
-      );
+      await logQueueAction(conn, {
+        queue_id: row.queue_id,
+        actor_user_id: req.session.uid,
+        department_id,
+        action: 'served',
+        details: {
+          counter_id: row.counter_id || null,
+          source: 'call_next'
+        }
+      });
     }
 
     const [next] = await conn.execute(
@@ -1411,7 +3140,8 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
 	                is_priority DESC,
 	                created_at ASC,
 	                queue_id ASC
-	       LIMIT 1`,
+	       LIMIT 1
+	       FOR UPDATE`,
       [department_id]
     );
 
@@ -1420,6 +3150,10 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
       return res.json({
         success: true,
         next: null,
+        completed_queue: servingRows[0] ? {
+          ...servingRows[0],
+          status: 'done'
+        } : null,
         message: 'Current patient marked as served. No waiting patients left.'
       });
     }
@@ -1441,16 +3175,26 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
       );
     }
 
-    await conn.execute(
-      `INSERT INTO queue_logs (queue_id, actor_user_id, counter_id, action)
-	       VALUES (?, ?, ?, 'called')`,
-      [next.queue_id, req.session.uid, selectedCounter ? selectedCounter.counter_id : null]
-    );
+    await logQueueAction(conn, {
+      queue_id: next.queue_id,
+      actor_user_id: req.session.uid,
+      department_id,
+      action: 'called_next',
+      details: {
+        code: next.code,
+        counter_id: selectedCounter ? selectedCounter.counter_id : null,
+        counter_name: selectedCounter ? selectedCounter.name : null
+      }
+    });
 
     await conn.commit();
 
     return res.json({
       success: true,
+      completed_queue: servingRows[0] ? {
+        ...servingRows[0],
+        status: 'done'
+      } : null,
       next: {
         ...next,
         counter_id: selectedCounter ? selectedCounter.counter_id : null,
@@ -1459,7 +3203,11 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
     });
   } catch (err) {
     await conn.rollback();
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      error: err.message
+    });
   } finally {
     conn.release();
   }
@@ -1471,131 +3219,67 @@ app.post('/api/admin/queues/:queue_id/recall', reqLogin, reqStaffOrAdmin, async 
 
   try {
     conn = await pool.getConnection();
+    await conn.beginTransaction();
 
     const [queue] = await conn.execute(
       `SELECT queue_id, department_id, status
        FROM queues
-       WHERE queue_id = ?`,
+       WHERE queue_id = ?
+       FOR UPDATE`,
       [queue_id]
     );
 
     if (!queue) {
+      await conn.rollback();
       return res.status(404).json({ error: 'Queue entry not found' });
     }
 
     if (!canAccessDepartment(req, queue.department_id)) {
+      await conn.rollback();
       return res.status(403).json({ error: 'You cannot recall this queue entry' });
     }
 
-    await conn.execute(
-      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
-       VALUES (?, ?, 'recall')`,
-      [queue_id, req.session.uid]
-    );
+    await logQueueAction(conn, {
+      queue_id,
+      actor_user_id: req.session.uid,
+      department_id: queue.department_id,
+      action: 'recalled',
+      details: {
+        status: queue.status
+      }
+    });
 
+    await conn.commit();
     return res.json({ success: true });
   } catch (err) {
+    if (conn) await conn.rollback();
     return res.status(500).json({ error: err.message });
   } finally {
     if (conn) conn.release();
   }
 });
 
+app.post('/api/admin/transfer', reqLogin, reqStaffOrAdmin, async (req, res) => {
+  const result = await performQueueTransfer(req, {
+    queue_id: req.body.queue_id,
+    target_department_id: req.body.target_department_id,
+    reason: req.body.reason
+  });
+
+  return res.status(result.status).json(result.body);
+});
+
 app.patch('/api/admin/queues/:queue_id/transfer', reqLogin, reqStaffOrAdmin, async (req, res) => {
   const { queue_id } = req.params;
   const { to_department_id, notes } = req.body;
 
-  if (!to_department_id) {
-    return res.status(400).json({ error: 'Target department is required' });
-  }
+  const result = await performQueueTransfer(req, {
+    queue_id,
+    target_department_id: to_department_id,
+    reason: notes
+  });
 
-  const conn = await pool.getConnection();
-
-  try {
-    await conn.beginTransaction();
-
-    const [queue] = await conn.execute(
-      `SELECT queue_id, department_id, status
-       FROM queues
-       WHERE queue_id = ?`,
-      [queue_id]
-    );
-
-    if (!queue) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Queue entry not found' });
-    }
-
-    if (!canAccessDepartment(req, queue.department_id)) {
-      await conn.rollback();
-      return res.status(403).json({ error: 'You cannot transfer this queue entry' });
-    }
-
-    const [targetDepartment] = await conn.execute(
-      `SELECT department_id, queue_status, pause_message, paused_until
-       FROM departments
-       WHERE department_id = ?`,
-      [to_department_id]
-    );
-
-    if (!targetDepartment) {
-      await conn.rollback();
-      return res.status(400).json({ error: 'Target department not found' });
-    }
-
-    if (Number(targetDepartment.department_id) === Number(queue.department_id)) {
-      await conn.rollback();
-      return res.status(400).json({ error: 'Queue entry is already in this department' });
-    }
-
-    if (targetDepartment.queue_status !== 'open') {
-      await conn.rollback();
-      return res.status(400).json({
-        error: targetDepartment.pause_message || 'Target department is not accepting new queues',
-        department_status: targetDepartment.queue_status,
-        pause_message: targetDepartment.pause_message,
-        paused_until: targetDepartment.paused_until
-      });
-    }
-
-    await conn.execute(
-      `UPDATE counters
-       SET current_queue_id = NULL
-       WHERE current_queue_id = ?`,
-      [queue_id]
-    );
-
-    await conn.execute(
-      `UPDATE queues
-       SET department_id = ?,
-           status = 'waiting',
-           called_at = NULL,
-           finished_at = NULL
-       WHERE queue_id = ?`,
-      [to_department_id, queue_id]
-    );
-
-    await conn.execute(
-      `INSERT INTO queue_logs
-       (queue_id, actor_user_id, action, from_department_id, to_department_id, notes)
-       VALUES (?, ?, 'transferred', ?, ?, ?)`,
-      [queue_id, req.session.uid, queue.department_id, to_department_id, notes || null]
-    );
-
-    await conn.commit();
-
-    return res.json({
-      success: true,
-      queue_id: Number(queue_id),
-      from_department_id: Number(queue.department_id),
-      to_department_id: Number(to_department_id)
-    });
-  } catch (err) {
-    await conn.rollback();
-    return res.status(500).json({ error: err.message });
-  } finally {
-    conn.release();
-  }
+  return res.status(result.status).json(result.body);
 });
 
 app.get('/api/admin/queues/:queue_id/history', reqLogin, reqStaffOrAdmin, async (req, res) => {
@@ -1625,17 +3309,17 @@ app.get('/api/admin/queues/:queue_id/history', reqLogin, reqStaffOrAdmin, async 
           l.log_id,
           l.queue_id,
           l.action,
-          l.notes,
+          l.details,
+          l.details AS notes,
           l.created_at,
           u.full_name AS actor_name,
-          c.name AS counter_name,
-          fd.name AS from_department_name,
-          td.name AS to_department_name
+          d.name AS department_name,
+          NULL AS counter_name,
+          NULL AS from_department_name,
+          NULL AS to_department_name
        FROM queue_logs l
        LEFT JOIN users u ON u.user_id = l.actor_user_id
-       LEFT JOIN counters c ON c.counter_id = l.counter_id
-       LEFT JOIN departments fd ON fd.department_id = l.from_department_id
-       LEFT JOIN departments td ON td.department_id = l.to_department_id
+       LEFT JOIN departments d ON d.department_id = l.department_id
        WHERE l.queue_id = ?
        ORDER BY l.created_at ASC, l.log_id ASC`,
       [queue_id]
@@ -1684,6 +3368,224 @@ app.get('/api/admin/status', reqLogin, async (req, res) => {
 
   } catch (err) {
     return res.json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.get('/api/admin/history', reqLogin, reqStaffOrAdmin, async (req, res) => {
+  const { department_id, status, date_from, date_to, search } = req.query;
+  const historyStatuses = ['done', 'no_show', 'void', 'cancelled'];
+  const allowedStatuses = ['waiting', 'serving', ...historyStatuses];
+  const filters = [];
+  const params = [];
+
+  if (req.session.role === 'staff') {
+    if (!req.session.department_id) {
+      return res.status(403).json({ error: 'Staff account has no assigned department' });
+    }
+
+    filters.push('q.department_id = ?');
+    params.push(req.session.department_id);
+  } else if (department_id) {
+    if (!canAccessDepartment(req, department_id)) {
+      return res.status(403).json({ error: 'You cannot access this department' });
+    }
+
+    filters.push('q.department_id = ?');
+    params.push(department_id);
+  }
+
+  if (status) {
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid queue status filter' });
+    }
+
+    filters.push('q.status = ?');
+    params.push(status);
+  } else {
+    filters.push(`q.status IN (${historyStatuses.map(() => '?').join(', ')})`);
+    params.push(...historyStatuses);
+  }
+
+  if (date_from) {
+    filters.push('q.created_at >= ?');
+    params.push(`${date_from} 00:00:00`);
+  }
+
+  if (date_to) {
+    filters.push('q.created_at <= ?');
+    params.push(`${date_to} 23:59:59`);
+  }
+
+  if (search) {
+    const like = `%${search}%`;
+    filters.push(`(
+      q.code LIKE ?
+      OR q.full_name LIKE ?
+      OR q.category LIKE ?
+      OR q.visit_description LIKE ?
+    )`);
+    params.push(like, like, like, like);
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const rows = await conn.execute(
+      `SELECT
+          q.queue_id,
+          q.code,
+          q.full_name,
+          d.name AS department_name,
+          q.department_id,
+          q.category,
+          q.status,
+          q.referred_from_queue_id,
+          q.transfer_reason,
+          q.transferred_by_user_id,
+          q.transferred_at,
+          tq.queue_id AS transferred_queue_id,
+          tq.code AS transferred_queue_code,
+          q.created_at,
+          q.called_at,
+          q.finished_at
+       FROM queues q
+       JOIN departments d ON d.department_id = q.department_id
+       LEFT JOIN queues tq ON tq.referred_from_queue_id = q.queue_id
+       WHERE ${filters.join(' AND ')}
+       ORDER BY COALESCE(q.finished_at, q.called_at, q.created_at) DESC,
+                q.queue_id DESC
+       LIMIT 300`,
+      params
+    );
+
+    return res.json({
+      success: true,
+      history: rows
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.post('/api/admin/history/ai-search', reqLogin, reqStaffOrAdmin, async (req, res) => {
+  const prompt = String(req.body && req.body.prompt ? req.body.prompt : '').trim();
+
+  if (!prompt) {
+    return res.status(400).json({
+      success: false,
+      message: 'Prompt is required',
+      error: 'Prompt is required'
+    });
+  }
+
+  if (prompt.length > 500) {
+    return res.status(400).json({
+      success: false,
+      message: 'Prompt is too long',
+      error: 'Prompt is too long'
+    });
+  }
+
+  if (req.session.role === 'staff' && !req.session.department_id) {
+    return res.status(403).json({
+      success: false,
+      message: 'Staff account has no assigned department',
+      error: 'Staff account has no assigned department'
+    });
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const includeQueueLogs = await hasQueueLogsTable(conn);
+    let mode = 'ai';
+    let message = null;
+    let filters;
+
+    try {
+      filters = await promptToQueueSearchFilters(prompt);
+    } catch (err) {
+      console.error('Groq AI history search failed:', err.message);
+      console.info('Using fallback mode for queue history search');
+      mode = 'fallback';
+      message = 'AI search was unavailable, so normal search was used.';
+      filters = await buildFallbackSearchFilters(conn, prompt);
+    }
+
+    filters = normalizeAiSearchFilters(filters);
+
+    const query = buildHistorySearchQuery({
+      filters,
+      session: req.session,
+      includeQueueLogs,
+      limit: 100
+    });
+
+    const results = await conn.execute(query.sql, query.params);
+    let logs = [];
+
+    if (includeQueueLogs && results.length) {
+      const queueIds = results.map(record => record.queue_id);
+      const logWhere = [`l.queue_id IN (${queueIds.map(() => '?').join(', ')})`];
+      const logParams = [...queueIds];
+
+      if (filters.keywords.length) {
+        const clauses = [];
+
+        for (const keyword of filters.keywords) {
+          const like = `%${keyword}%`;
+          clauses.push('(l.action LIKE ? OR l.details LIKE ?)');
+          logParams.push(like, like);
+        }
+
+        logWhere.push(`(${clauses.join(' OR ')})`);
+      }
+
+      logs = await conn.execute(
+        `SELECT
+            l.log_id,
+            l.queue_id,
+            l.actor_user_id,
+            l.department_id,
+            l.action,
+            l.details,
+            l.created_at,
+            u.full_name AS actor_name,
+            d.name AS department_name
+         FROM queue_logs l
+         LEFT JOIN users u ON u.user_id = l.actor_user_id
+         LEFT JOIN departments d ON d.department_id = l.department_id
+         WHERE ${logWhere.join(' AND ')}
+         ORDER BY l.created_at DESC, l.log_id DESC
+         LIMIT 200`,
+        logParams
+      );
+    }
+
+    return res.json({
+      success: true,
+      mode,
+      message,
+      filters,
+      results,
+      history: results,
+      logs
+    });
+  } catch (err) {
+    console.error('Queue history search failed:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Search failed. Please try a simpler search.',
+      error: 'Search failed. Please try a simpler search.'
+    });
   } finally {
     if (conn) conn.release();
   }
@@ -1808,8 +3710,20 @@ app.get('/api/display/now-serving', reqLogin, async (req, res) => {
 
     for (const department of departments) {
       const serving = await conn.execute(
-        `SELECT q.queue_id, q.code, q.full_name, q.called_at, c.name AS counter_name
+        `SELECT q.queue_id,
+                q.code,
+                q.full_name,
+                q.called_at,
+                d.name AS department_name,
+                c.name AS counter_name,
+                (
+                  SELECT MAX(l.log_id)
+                  FROM queue_logs l
+                  WHERE l.queue_id = q.queue_id
+                    AND l.action IN ('called_next', 'recalled')
+                ) AS announcement_event_id
          FROM queues q
+         LEFT JOIN departments d ON d.department_id = q.department_id
          LEFT JOIN counters c ON c.current_queue_id = q.queue_id
          WHERE q.department_id = ?
            AND q.status = 'serving'
@@ -1830,12 +3744,21 @@ app.get('/api/display/now-serving', reqLogin, async (req, res) => {
         [department.department_id]
       );
 
+      const [waitingCount] = await conn.execute(
+        `SELECT COUNT(*) AS count
+         FROM queues q
+         WHERE q.department_id = ?
+           AND q.status = 'waiting'`,
+        [department.department_id]
+      );
+
       result.push({
         department_id: department.department_id,
         name: department.name,
         queue_status: department.queue_status,
         pause_message: department.pause_message,
         paused_until: department.paused_until,
+        waiting_count: Number(waitingCount.count || 0),
         serving,
         up_next: upNext
       });
@@ -1886,9 +3809,51 @@ app.get('/api/queue/:department_id', reqLogin, async (req, res) => {
   }
 });
 
+app.post('/api/queue/suggest', reqLogin, async (req, res) => {
+  const concern = String(req.body && req.body.concern ? req.body.concern : '').trim();
+
+  if (!concern) {
+    return res.json({
+      success: true,
+      ai: null
+    });
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+    const availableDepartments = await getDepartmentNames(conn);
+    const ai = await classifyVisitConcern({ concern, availableDepartments });
+
+    if (!ai) {
+      return res.json({
+        success: true,
+        ai: null,
+        message: 'AI suggestion is currently unavailable.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      ai
+    });
+  } catch (err) {
+    console.error('Queue suggestion failed:', err.message);
+    return res.json({
+      success: true,
+      ai: null,
+      message: 'AI suggestion is currently unavailable.'
+    });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 app.post('/api/queue/create', reqLogin, async (req, res) => {
   const uid = req.session.uid;
-  const { patientName, serviceType, concern, queueType, priority } = req.body;
+  const { patientName, serviceType, concern, queueType, priority, ai: rawAiSuggestion } = req.body;
+  const enforceUserActiveQueue = !['owner', 'admin', 'staff'].includes(req.session.role);
 
   if (!patientName || !serviceType) {
     return res.status(400).json({ error: 'Missing fields' });
@@ -1908,31 +3873,56 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const [activeQueue] = await conn.execute(
-      `SELECT queue_id, code
-       FROM queues
+    const [userLock] = await conn.execute(
+      `SELECT user_id
+       FROM users
        WHERE user_id = ?
-         AND status IN ('waiting', 'serving')
-       ORDER BY created_at DESC
-       LIMIT 1`,
+       FOR UPDATE`,
       [uid]
     );
 
-    if (activeQueue) {
+    if (!userLock) {
       await conn.rollback();
-
-      return res.status(409).json({
+      return res.status(401).json({
         success: false,
-        error: 'You already have an active queue',
-        queue_id: activeQueue.queue_id,
-        code: activeQueue.code
+        message: 'Unauthorized',
+        error: 'Unauthorized'
       });
     }
+
+    if (enforceUserActiveQueue) {
+      const [activeQueue] = await conn.execute(
+        `SELECT queue_id, code
+         FROM queues
+         WHERE user_id = ?
+           AND status IN ('waiting', 'serving')
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [uid]
+      );
+
+      if (activeQueue) {
+        await conn.rollback();
+
+        return res.status(409).json({
+          success: false,
+          message: 'You already have an active queue.',
+          error: 'You already have an active queue.',
+          queue_id: activeQueue.queue_id,
+          code: activeQueue.code
+        });
+      }
+    }
+
+    const availableDepartments = await getDepartmentNames(conn);
+    const aiSuggestion = normalizeVisitConcernPayload(rawAiSuggestion, availableDepartments);
 
     const [categ] = await conn.execute(
       `SELECT code, department_id, queue_status, pause_message, paused_until
 	       FROM departments
-	       WHERE name = ?`,
+	       WHERE name = ?
+	       FOR UPDATE`,
       [serviceType]
     );
 
@@ -1946,7 +3936,8 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
 
       return res.status(403).json({
         success: false,
-        error: categ.pause_message || 'This department is currently not accepting queues',
+        message: categ.pause_message || 'Queue is currently closed.',
+        error: categ.pause_message || 'Queue is currently closed.',
         department_status: categ.queue_status,
         pause_message: categ.pause_message,
         paused_until: categ.paused_until
@@ -1973,16 +3964,37 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
 
     const insert = await conn.execute(
       `INSERT INTO queues
-	       (full_name, category, visit_description, code, user_id, department_id, is_priority, is_emergency)
-	       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [patientName, category, concern, code, uid, categ.department_id, isPriority, isEmergency]
+	       (full_name, category, visit_description, code, user_id, department_id, is_priority, is_emergency, ai_suggested_department, ai_category, ai_priority_level, ai_reason)
+	       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        patientName,
+        category,
+        concern,
+        code,
+        uid,
+        categ.department_id,
+        isPriority,
+        isEmergency,
+        aiSuggestion ? aiSuggestion.suggested_department : null,
+        aiSuggestion ? aiSuggestion.category : null,
+        aiSuggestion ? aiSuggestion.priority_level : null,
+        aiSuggestion ? aiSuggestion.reason : null
+      ]
     );
 
-    await conn.execute(
-      `INSERT INTO queue_logs (queue_id, actor_user_id, action)
-	       VALUES (?, ?, 'created')`,
-      [insert.insertId, uid]
-    );
+    await logQueueAction(conn, {
+      queue_id: insert.insertId,
+      actor_user_id: uid,
+      department_id: categ.department_id,
+      action: enforceUserActiveQueue ? 'queue_created' : 'admin_added_queue',
+      details: {
+        code,
+        patientName,
+        category,
+        ai_priority_level: aiSuggestion ? aiSuggestion.priority_level : null,
+        source: enforceUserActiveQueue ? 'patient' : 'admin'
+      }
+    });
 
     const [ahead] = await conn.execute(
       `SELECT COUNT(*) AS ahead
@@ -2002,7 +4014,13 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
       queue_id: Number(insert.insertId),
       department_id: categ.department_id,
       ahead: Number(ahead.ahead || 0),
-      code
+      code,
+      ai: aiSuggestion ? {
+        suggested_department: aiSuggestion.suggested_department,
+        category: aiSuggestion.category,
+        priority_level: aiSuggestion.priority_level,
+        reason: aiSuggestion.reason
+      } : null
     });
   } catch (err) {
     await conn.rollback();

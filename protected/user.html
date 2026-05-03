@@ -13,8 +13,13 @@
   </head>
   <body>
     <header>
-      <div class="logo">CareFlow | Queue</div> 
+      <div class="logo">CareFlow | Queue</div>
       <div class="header-right">
+        <div class="fallback-contact" aria-label="Clinic fallback contact">
+          <span class="fallback-contact-label">Secretary</span>
+          <a class="fallback-contact-pill" href="mailto:clinicsecretary@gmail.com">clinicsecretary@gmail.com</a>
+          <a class="fallback-contact-pill" href="tel:09771233091">09771233091</a>
+        </div>
         <button class="btn-logout" id="btn-logout">Log out</button>
       </div>
     </header>
@@ -23,11 +28,24 @@
       <aside>
         <div class="serving-panel">
           <div class="serving-label" id="completeFormLabel">Complete the form to join</div>
-          <div class="ticket-number empty" id="now-ticket">---</div>
+
+          <div class="ticket-status-row">
+            <div class="ticket-number empty" id="now-ticket">---</div>
+            <div class="clinic-status-badge" id="clinic-status-badge">
+              <span
+                class="log-dot"
+                id="clinic-status-dot"
+                style="background: var(--green)"
+              ></span>
+              <span id="clinic-status-text">Open</span>
+            </div>
+          </div>
+
           <div class="serving-name" id="now-name" style="opacity: 0.3">
             Not yet joined
           </div>
           <div class="serving-service" id="now-service"></div>
+          <div class="serving-service" id="now-ai-note"></div>
 
           <div class="serving-divider"></div>
 
@@ -41,22 +59,22 @@
               <div class="wait-stat-value" id="stat-est-wait">0m</div>
             </div>
           </div>
+
+          <button type="button" class="btn-add hidden" id="btn-cancel-queue">
+            Cancel Queue
+          </button>
         </div>
 
-        <div class="log-card">
+        <div class="queue-card waiting-sidebar-card">
           <div class="queue-header">
-            <div class="clinic-status-left">
-              <div class="card-title" style="margin: 0">Clinic Status</div>
-              <div class="clinic-status-badge" id="clinic-status-badge">
-                <span
-                  class="log-dot"
-                  id="clinic-status-dot"
-                  style="background: var(--green)"
-                ></span>
-                <span id="clinic-status-text">Open</span>
-              </div>
+            <div>
+              <div class="card-title" style="margin: 0">Waiting queue</div>
+              <div class="card-subtitle">Updates automatically for your department</div>
             </div>
           </div>
+          <ul class="queue-list" id="queue-list">
+            <li class="empty-state" id="empty-state"></li>
+          </ul>
         </div>
       </aside>
 
@@ -114,20 +132,35 @@
                 rows="3"
                 placeholder="Describe your concern or reason for visit..."
               ></textarea>
+              <div class="card-subtitle" id="suggestion-status"></div>
             </div>
 
-            <button type="submit" class="btn-add">Add</button>
+            <div class="form-actions">
+              <button type="button" class="btn-add btn-add--secondary" id="btn-suggest-department">Suggest</button>
+              <button type="submit" class="btn-add">Add</button>
+            </div>
           </div>
         </form>
 
-        <div class="queue-card">
+        <section class="schedule-card">
           <div class="queue-header">
-            <div class="card-title" style="margin: 0">Waiting queue</div>
+            <div>
+              <div class="card-title" style="margin: 0">Department Schedule</div>
+              <div class="card-subtitle">Open hours will appear here when configured</div>
+            </div>
           </div>
-          <ul class="queue-list" id="queue-list">
-            <li class="empty-state" id="empty-state"></li>
-          </ul>
-        </div>
+
+          <div class="schedule-placeholder" id="department-schedule">
+            <div class="schedule-icon" aria-hidden="true">Cal</div>
+            <div>
+              <div class="schedule-title">No configured schedule yet</div>
+              <p>
+                Department open schedules are not available from the backend yet.
+                Please use the secretary contact in the topbar for fallback assistance.
+              </p>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
 

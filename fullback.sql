@@ -16,6 +16,7 @@ DROP TABLE IF EXISTS `queue_logs`;
 DROP TABLE IF EXISTS `counters`;
 DROP TABLE IF EXISTS `queues`;
 DROP TABLE IF EXISTS `daily_counters`;
+DROP TABLE IF EXISTS `department_schedules`;
 DROP TABLE IF EXISTS `ui_settings`;
 DROP TABLE IF EXISTS `system_settings`;
 DROP TABLE IF EXISTS `users`;
@@ -43,6 +44,23 @@ CREATE TABLE `departments` (
   UNIQUE KEY `code` (`code`)
 ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+CREATE TABLE `department_schedules` (
+  `schedule_id` int(11) NOT NULL AUTO_INCREMENT,
+  `department_id` int(11) NOT NULL,
+  `day_of_week` tinyint(4) NOT NULL,
+  `opens_at` time DEFAULT NULL,
+  `closes_at` time DEFAULT NULL,
+  `is_closed` tinyint(1) NOT NULL DEFAULT 0,
+  `note` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`schedule_id`),
+  UNIQUE KEY `unique_department_day` (`department_id`,`day_of_week`),
+  KEY `idx_department_schedules_department` (`department_id`),
+  CONSTRAINT `department_schedules_ibfk_1` FOREIGN KEY (`department_id`) REFERENCES `departments` (`department_id`) ON DELETE CASCADE,
+  CONSTRAINT `chk_department_schedule_day` CHECK (`day_of_week` between 0 and 6)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE TABLE `users` (
   `user_id` int(11) NOT NULL AUTO_INCREMENT,
   `username` varchar(255) NOT NULL,
@@ -67,21 +85,33 @@ CREATE TABLE `queues` (
   `department_id` int(11) NOT NULL,
   `code` varchar(10) NOT NULL,
   `category` enum('general','support','priority','complaint') NOT NULL,
-  `status` enum('waiting','serving','done','no_show','void') DEFAULT 'waiting',
+  `status` enum('waiting','serving','done','no_show','void','cancelled') DEFAULT 'waiting',
   `visit_description` text DEFAULT NULL,
+  `ai_suggested_department` varchar(100) DEFAULT NULL,
+  `ai_category` varchar(50) DEFAULT NULL,
+  `ai_priority_level` varchar(30) DEFAULT NULL,
+  `ai_reason` text DEFAULT NULL,
   `is_priority` tinyint(1) DEFAULT 0,
   `is_emergency` tinyint(1) DEFAULT 0,
   `created_at` datetime DEFAULT current_timestamp(),
   `called_at` datetime DEFAULT NULL,
   `finished_at` datetime DEFAULT NULL,
+  `referred_from_queue_id` int(11) DEFAULT NULL,
+  `transfer_reason` text DEFAULT NULL,
+  `transferred_by_user_id` int(11) DEFAULT NULL,
+  `transferred_at` datetime DEFAULT NULL,
   PRIMARY KEY (`queue_id`),
   KEY `department_id` (`department_id`),
+  KEY `idx_queue_referred_from` (`referred_from_queue_id`),
+  KEY `fk_queues_transferred_by` (`transferred_by_user_id`),
   KEY `idx_queue_status` (`status`),
   KEY `idx_queue_user` (`user_id`),
   KEY `idx_queue_created` (`created_at`),
   KEY `idx_queue_department_status` (`department_id`,`status`),
   CONSTRAINT `queues_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
-  CONSTRAINT `queues_ibfk_2` FOREIGN KEY (`department_id`) REFERENCES `departments` (`department_id`) ON DELETE RESTRICT
+  CONSTRAINT `queues_ibfk_2` FOREIGN KEY (`department_id`) REFERENCES `departments` (`department_id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_queues_referred_from` FOREIGN KEY (`referred_from_queue_id`) REFERENCES `queues` (`queue_id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_queues_transferred_by` FOREIGN KEY (`transferred_by_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=92 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `counters` (
@@ -113,27 +143,21 @@ CREATE TABLE `daily_counters` (
 
 CREATE TABLE `queue_logs` (
   `log_id` int(11) NOT NULL AUTO_INCREMENT,
-  `queue_id` int(11) NOT NULL,
+  `queue_id` int(11) DEFAULT NULL,
   `actor_user_id` int(11) DEFAULT NULL,
-  `action` enum('created','called','skipped','no_show','void','recall','served','transferred','assigned_counter') NOT NULL,
-  `counter_id` int(11) DEFAULT NULL,
-  `from_department_id` int(11) DEFAULT NULL,
-  `to_department_id` int(11) DEFAULT NULL,
-  `notes` varchar(255) DEFAULT NULL,
+  `department_id` int(11) DEFAULT NULL,
+  `action` varchar(50) NOT NULL,
+  `details` text DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`log_id`),
   KEY `idx_logs_queue` (`queue_id`),
   KEY `idx_logs_actor` (`actor_user_id`),
-  KEY `idx_logs_counter` (`counter_id`),
-  KEY `idx_logs_from_department` (`from_department_id`),
-  KEY `idx_logs_to_department` (`to_department_id`),
+  KEY `idx_logs_department` (`department_id`),
   KEY `idx_logs_created` (`created_at`),
   KEY `idx_logs_action` (`action`),
-  CONSTRAINT `queue_logs_ibfk_1` FOREIGN KEY (`queue_id`) REFERENCES `queues` (`queue_id`) ON DELETE CASCADE,
+  CONSTRAINT `queue_logs_ibfk_1` FOREIGN KEY (`queue_id`) REFERENCES `queues` (`queue_id`) ON DELETE SET NULL,
   CONSTRAINT `queue_logs_ibfk_2` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_queue_logs_counter` FOREIGN KEY (`counter_id`) REFERENCES `counters` (`counter_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_queue_logs_from_department` FOREIGN KEY (`from_department_id`) REFERENCES `departments` (`department_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_queue_logs_to_department` FOREIGN KEY (`to_department_id`) REFERENCES `departments` (`department_id`) ON DELETE SET NULL
+  CONSTRAINT `fk_queue_logs_department` FOREIGN KEY (`department_id`) REFERENCES `departments` (`department_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `system_settings` (
@@ -189,19 +213,19 @@ UNLOCK TABLES;
 LOCK TABLES `queues` WRITE;
 ALTER TABLE `queues` DISABLE KEYS;
 INSERT INTO `queues`
-  (`queue_id`, `full_name`, `user_id`, `department_id`, `code`, `category`, `status`, `visit_description`, `is_priority`, `is_emergency`, `created_at`, `called_at`, `finished_at`)
+  (`queue_id`, `full_name`, `user_id`, `department_id`, `code`, `category`, `status`, `visit_description`, `ai_suggested_department`, `ai_category`, `ai_priority_level`, `ai_reason`, `is_priority`, `is_emergency`, `created_at`, `called_at`, `finished_at`)
 VALUES
-  (81,'kairi dynasty',5,9,'LB002','general','done','in dire need of a checkup',0,0,'2026-04-29 08:22:48','2026-04-29 08:23:00','2026-04-29 08:23:13'),
-  (82,'Nick Gurr',3,5,'GM002','general','done','im 67 years old and i have diabetes',0,0,'2026-04-29 08:38:46','2026-04-29 08:39:14','2026-04-29 08:39:38'),
-  (83,'Nick Gurr',3,5,'GM003','general','no_show','I have diabetes',0,0,'2026-04-29 08:40:33','2026-04-29 08:40:43',NULL),
-  (84,'six seven',3,5,'GM004','priority','no_show','im 67 years old',1,0,'2026-04-29 08:41:30','2026-04-29 08:47:37',NULL),
-  (85,'nick gurr III',3,5,'GM005','general','no_show','im diabetes',0,0,'2026-04-29 08:48:04','2026-04-29 08:48:23',NULL),
-  (86,'nick gurr IV',3,5,'GM006','general','done','im diabetes',0,0,'2026-04-29 08:48:40','2026-04-29 15:48:55','2026-04-29 15:49:10'),
-  (87,'normal',7,5,'GM007','general','done','adik adik',0,0,'2026-04-29 08:51:11','2026-04-29 15:49:10','2026-04-29 15:49:11'),
-  (88,'Hermesa',3,8,'ER002','general','done','ano?',0,0,'2026-04-29 19:27:23','2026-04-29 19:28:02','2026-04-29 19:28:12'),
-  (89,'amazing',3,5,'GM008','general','done','almat',0,0,'2026-04-29 19:30:28','2026-04-29 19:30:47','2026-04-29 19:30:49'),
-  (90,'alksdfj',3,5,'GM009','general','done','aslkdfjalkdsfj',0,0,'2026-04-29 19:38:06','2026-04-29 19:38:17','2026-04-29 19:38:18'),
-  (91,'asdfsaf',3,8,'ER003','general','done','adsfafa',0,0,'2026-04-29 19:38:50','2026-04-29 19:39:05','2026-04-29 19:39:30');
+  (81,'kairi dynasty',5,9,'LB002','general','done','in dire need of a checkup',NULL,NULL,NULL,NULL,0,0,'2026-04-29 08:22:48','2026-04-29 08:23:00','2026-04-29 08:23:13'),
+  (82,'Nick Gurr',3,5,'GM002','general','done','im 67 years old and i have diabetes',NULL,NULL,NULL,NULL,0,0,'2026-04-29 08:38:46','2026-04-29 08:39:14','2026-04-29 08:39:38'),
+  (83,'Nick Gurr',3,5,'GM003','general','no_show','I have diabetes',NULL,NULL,NULL,NULL,0,0,'2026-04-29 08:40:33','2026-04-29 08:40:43',NULL),
+  (84,'six seven',3,5,'GM004','priority','no_show','im 67 years old',NULL,NULL,NULL,NULL,1,0,'2026-04-29 08:41:30','2026-04-29 08:47:37',NULL),
+  (85,'nick gurr III',3,5,'GM005','general','no_show','im diabetes',NULL,NULL,NULL,NULL,0,0,'2026-04-29 08:48:04','2026-04-29 08:48:23',NULL),
+  (86,'nick gurr IV',3,5,'GM006','general','done','im diabetes',NULL,NULL,NULL,NULL,0,0,'2026-04-29 08:48:40','2026-04-29 15:48:55','2026-04-29 15:49:10'),
+  (87,'normal',7,5,'GM007','general','done','adik adik',NULL,NULL,NULL,NULL,0,0,'2026-04-29 08:51:11','2026-04-29 15:49:10','2026-04-29 15:49:11'),
+  (88,'Hermesa',3,8,'ER002','general','done','ano?',NULL,NULL,NULL,NULL,0,0,'2026-04-29 19:27:23','2026-04-29 19:28:02','2026-04-29 19:28:12'),
+  (89,'amazing',3,5,'GM008','general','done','almat',NULL,NULL,NULL,NULL,0,0,'2026-04-29 19:30:28','2026-04-29 19:30:47','2026-04-29 19:30:49'),
+  (90,'alksdfj',3,5,'GM009','general','done','aslkdfjalkdsfj',NULL,NULL,NULL,NULL,0,0,'2026-04-29 19:38:06','2026-04-29 19:38:17','2026-04-29 19:38:18'),
+  (91,'asdfsaf',3,8,'ER003','general','done','adsfafa',NULL,NULL,NULL,NULL,0,0,'2026-04-29 19:38:50','2026-04-29 19:39:05','2026-04-29 19:39:30');
 ALTER TABLE `queues` ENABLE KEYS;
 UNLOCK TABLES;
 
@@ -247,4 +271,3 @@ SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT;
 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS;
 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION;
 SET SQL_NOTES=@OLD_SQL_NOTES;
-

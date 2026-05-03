@@ -2,6 +2,7 @@ let DEPT_ID = null;
 let current = null;
 let queue = [];
 let clinicOpen = true;
+let isCallingNext = false;
 
 const AVG_SERVICE_MINS = 5;
 
@@ -61,18 +62,37 @@ async function addToQueue() {
 }
 
 async function callNext() {
-  const res = await fetch('/api/admin/next', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ department_id: DEPT_ID })
-  });
-  const data = await res.json();
+  if (isCallingNext) return;
 
-  current = data.next ?? null;
-  showToast(current ? `Now serving ${current.code}` : 'Queue is empty');
-  await refreshQueue();
-  render();
+  const nextBtn = document.getElementById('btn-next');
+
+  try {
+    isCallingNext = true;
+    if (nextBtn) nextBtn.disabled = true;
+
+    const res = await fetch('/api/admin/next', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ department_id: DEPT_ID })
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || data.error || 'Failed to call next');
+    }
+
+    current = data.next ?? null;
+    showToast(current ? `Now serving ${current.code}` : 'Queue is empty');
+    await refreshQueue();
+    render();
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || 'Failed to call next');
+  } finally {
+    isCallingNext = false;
+    render();
+  }
 }
 
 async function markServed() {

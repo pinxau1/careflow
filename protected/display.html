@@ -14,7 +14,20 @@
         <div class="display-brand">CareFlow</div>
         <div class="display-subtitle">Now Serving</div>
       </div>
-      <div class="display-updated" id="display-updated">Loading...</div>
+      <div class="display-announcer" id="display-announcer">
+        <div class="display-announcer-actions">
+          <button type="button" class="display-announcer-btn primary" id="announcer-enable-btn">Enable Announcer</button>
+          <button type="button" class="display-announcer-btn" id="announcer-mute-btn">Mute</button>
+          <button type="button" class="display-announcer-btn" id="announcer-test-btn">Test</button>
+        </div>
+        <div class="display-announcer-status" id="announcer-status">Announcer off</div>
+        <div class="display-announcer-warning" id="announcer-warning" hidden>Text-to-speech is not supported in this browser.</div>
+      </div>
+      <div class="display-header-meta">
+        <div class="display-clock" id="display-clock">--:--:--</div>
+        <div class="display-date" id="display-date">--</div>
+        <div class="display-updated" id="display-updated">Loading...</div>
+      </div>
     </header>
 
     <section class="display-grid" id="display-grid">

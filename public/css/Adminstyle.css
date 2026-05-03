@@ -692,3 +692,203 @@ footer {
 .hidden{
   display: none;
 }
+
+/* Responsive admin queueing hardening */
+:root {
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-display: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-xs-fluid: clamp(0.82rem, 0.78rem + 0.14vw, 0.9rem);
+  --text-sm-fluid: clamp(0.9rem, 0.86rem + 0.2vw, 0.98rem);
+  --text-base-fluid: clamp(0.98rem, 0.93rem + 0.24vw, 1.06rem);
+  --text-lg-fluid: clamp(1.1rem, 1rem + 0.45vw, 1.35rem);
+  --text-display-fluid: clamp(3rem, 2rem + 4vw, 5.5rem);
+}
+
+body,
+input,
+select,
+textarea,
+button {
+  font-family: var(--font-body);
+  font-size: var(--text-base-fluid);
+  line-height: 1.5;
+}
+
+:where(
+  main,
+  aside,
+  .right-panel,
+  .serving-panel,
+  .log-card,
+  .add-card,
+  .queue-card,
+  .queue-list,
+  .queue-item,
+  .item-info,
+  .form-row,
+  .queue-header,
+  .wait-info
+) {
+  min-width: 0;
+}
+
+main {
+  max-width: min(1440px, 100%);
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: clamp(1rem, 1.6vw, 2rem);
+  padding: clamp(1rem, 1.8vw, 2rem);
+}
+
+.serving-label,
+.card-title,
+.wait-stat-label,
+.service-pill,
+.clinic-status-badge,
+.item-meta,
+.log-item,
+.clear-btn,
+.status-toggle-btn {
+  font-size: var(--text-sm-fluid);
+}
+
+.ticket-number,
+.wait-stat-value,
+.ticket-badge {
+  font-family: var(--font-display);
+}
+
+.ticket-number {
+  font-size: var(--text-display-fluid);
+  line-height: 0.92;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.serving-name,
+.item-name {
+  font-size: var(--text-lg-fluid);
+  line-height: 1.18;
+}
+
+.serving-name,
+.serving-service,
+.item-name,
+.item-meta,
+.log-item {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.btn-next,
+.btn-served,
+.btn-add,
+.btn-serve-now,
+.status-toggle-btn,
+.btn-logout {
+  min-height: 44px;
+}
+
+.form-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(0.75rem, 1vw, 1rem);
+}
+
+.field--full,
+.add-card .form-row > .btn-add {
+  grid-column: 1 / -1;
+}
+
+.add-card .form-row > .btn-add {
+  width: 100%;
+}
+
+.queue-card,
+.log-card,
+.add-card {
+  width: 100%;
+  max-width: 100%;
+}
+
+.queue-card,
+.log-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.queue-list,
+.log-list {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.queue-header,
+.clinic-status-left {
+  flex-wrap: wrap;
+}
+
+aside {
+  max-height: calc(100vh - 108px);
+  overflow: hidden;
+}
+
+@media (max-width: 980px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+
+  aside {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    overflow: auto;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ticket-number {
+    font-size: clamp(2.8rem, 18vw, 4.5rem);
+  }
+
+  .btn-next,
+  .btn-served,
+  .btn-add,
+  .btn-serve-now,
+  .status-toggle-btn,
+  .btn-logout {
+    width: 100%;
+  }
+
+  .queue-item {
+    flex-wrap: wrap;
+  }
+}
+
+/* Standalone queueing screen primary action sizing */
+.btn-next {
+  min-height: clamp(58px, 7vh, 76px);
+  padding: 1rem 1.2rem;
+  border-radius: 12px;
+  font-size: clamp(1.05rem, 0.98rem + 0.35vw, 1.25rem);
+  font-weight: 800;
+}
+
+.btn-served {
+  min-height: 50px;
+  font-size: var(--text-base-fluid);
+}
+
+.btn-serve-now {
+  min-height: 42px;
+  padding-inline: 0.9rem;
+  font-size: var(--text-sm-fluid);
+}

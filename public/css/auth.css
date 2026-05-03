@@ -1103,3 +1103,149 @@ body {
     border-radius: 22px;
   }
 }
+
+/* Shared auth hardening */
+:root {
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-display: ui-rounded, "Inter", system-ui, sans-serif;
+  --text-xs-fluid: clamp(0.82rem, 0.78rem + 0.14vw, 0.9rem);
+  --text-sm-fluid: clamp(0.9rem, 0.86rem + 0.2vw, 0.98rem);
+  --text-base-fluid: clamp(0.98rem, 0.93rem + 0.24vw, 1.06rem);
+  --text-lg-fluid: clamp(1.1rem, 1rem + 0.45vw, 1.3rem);
+  --text-xl-fluid: clamp(1.6rem, 1.28rem + 1.2vw, 2.4rem);
+}
+
+body,
+input,
+select,
+textarea,
+button {
+  font-family: var(--font-body);
+  font-size: var(--text-base-fluid);
+  line-height: 1.5;
+}
+
+:where(
+  .auth-main,
+  .auth-card,
+  .login-shell,
+  .signup-shell,
+  .login-hero,
+  .signup-hero,
+  .hero-copy,
+  .hero-preview,
+  .hero-metrics,
+  .input-group,
+  .input-container,
+  .invite-info,
+  .code-valid,
+  .form-section
+) {
+  min-width: 0;
+}
+
+.auth-main,
+.login-shell,
+.signup-shell {
+  width: min(1380px, 100%);
+  margin: 0 auto;
+}
+
+.auth-card,
+.login-page .auth-card,
+.signup-page .auth-card {
+  width: min(100%, 560px);
+  max-width: 100%;
+}
+
+.auth-card h2,
+.login-page .auth-card h2,
+.signup-page .auth-card h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-xl-fluid);
+  line-height: 1.08;
+}
+
+.auth-sub,
+.field-hint,
+.invite-info-title,
+.invite-info-sub,
+.code-valid-title,
+.code-valid-sub,
+.hero-topline,
+.hero-copy p,
+.preview-label,
+.preview-meta,
+.hero-metrics span,
+.signup-meta,
+.signup-copy p {
+  font-size: var(--text-sm-fluid);
+}
+
+.input-group label,
+.form-section-label,
+.terms-note,
+.preview-list li,
+.verify-btn {
+  font-size: var(--text-sm-fluid);
+}
+
+.input-container,
+.login-page .input-container,
+.signup-page .input-container,
+.auth-button,
+.verify-btn {
+  min-height: 48px;
+}
+
+.input-container input,
+.auth-button,
+.verify-btn {
+  font-size: var(--text-base-fluid);
+}
+
+.hero-copy h1,
+.signup-copy h1 {
+  font-family: var(--font-display);
+  overflow-wrap: anywhere;
+}
+
+.hero-copy,
+.signup-copy,
+.invite-info,
+.code-valid,
+.terms-note,
+.auth-sub {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1020px) {
+  .auth-main,
+  .login-shell,
+  .signup-shell {
+    width: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  .auth-main {
+    padding: 18px 14px;
+  }
+
+  .auth-card,
+  .login-page .auth-card,
+  .signup-page .auth-card {
+    padding: 24px 18px;
+    border-radius: 20px;
+  }
+
+  .hero-copy h1,
+  .signup-copy h1 {
+    font-size: clamp(2rem, 10vw, 2.8rem);
+  }
+
+  .auth-button,
+  .verify-btn {
+    width: 100%;
+  }
+}
