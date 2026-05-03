@@ -109,6 +109,30 @@
             </div>
 
             <div class="field">
+              <label for="inp-age">Age</label>
+              <input
+                type="number"
+                id="inp-age"
+                name="age"
+                min="0"
+                max="130"
+                placeholder="Enter age"
+                required
+              />
+            </div>
+
+            <div class="field">
+              <label for="inp-gender">Gender</label>
+              <select id="inp-gender" name="gender" required>
+                <option value="">Select gender</option>
+                <option value="Female">Female</option>
+                <option value="Male">Male</option>
+                <option value="Non-binary">Non-binary</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </div>
+
+            <div class="field">
               <label for="inp-service">Department</label>
               <select id="inp-service" name="serviceType">
                 <option value="General Medicine">General</option>

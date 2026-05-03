@@ -11,6 +11,7 @@ CREATE TABLE users (
   role ENUM('owner', 'admin', 'staff', 'patient') NOT NULL DEFAULT 'patient',
   full_name VARCHAR(150),
   age INT,
+  gender VARCHAR(30) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -65,6 +66,8 @@ CREATE TABLE queues (
   queue_id INT AUTO_INCREMENT PRIMARY KEY,
 
   full_name VARCHAR(150),
+  age INT NULL,
+  gender VARCHAR(30) NULL,
   user_id INT NOT NULL,
   department_id INT NOT NULL,
 

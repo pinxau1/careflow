@@ -34,7 +34,10 @@ if (isDashboard) {
   }
 
   function getDemographicText(p) {
-    return `${p.gender || 'Gender'} · ${p.age || 'Age'}`;
+    const parts = [];
+    if (p.gender) parts.push(p.gender);
+    if (p.age !== null && p.age !== undefined && p.age !== '') parts.push(`${p.age} yrs`);
+    return parts.length ? parts.join(' · ') : 'Demographics not provided';
   }
 
   function getActiveDepartmentName() {
@@ -134,7 +137,7 @@ if (isDashboard) {
       department_id: q.department_id,
       q: q.code || String(q.queue_id).padStart(3, '0'),
       name: q.full_name || 'Unknown patient',
-      gender: q.sex || '',
+      gender: q.gender || '',
       age: q.age || '',
       priority: q.is_emergency || q.is_priority ? 'high' : 'medium',
       status: q.status,
@@ -2628,6 +2631,18 @@ if (patientEl) {
         emailEl.textContent = data.user.email || '';
       }
 
+      if (addQueueForm) {
+        if (addQueueForm.name && !addQueueForm.name.value) {
+          addQueueForm.name.value = data.user.full_name || '';
+        }
+        if (addQueueForm.age && data.user.age !== null && data.user.age !== undefined && !addQueueForm.age.value) {
+          addQueueForm.age.value = data.user.age;
+        }
+        if (addQueueForm.gender && data.user.gender && !addQueueForm.gender.value) {
+          addQueueForm.gender.value = data.user.gender;
+        }
+      }
+
       account.hidden = false;
     } catch (err) {
       console.error('Failed to load patient profile', err);
@@ -2974,11 +2989,13 @@ if (patientEl) {
       }
 
       const patientName = addQueueForm.name.value.trim();
+      const age = addQueueForm.age.value;
+      const gender = addQueueForm.gender.value;
       const serviceType = addQueueForm.serviceType.value;
       const queueType = addQueueForm.queueType.value;
       const concern = addQueueForm.concern.value.trim();
 
-      if (!patientName || !serviceType || !concern) {
+      if (!patientName || !age || !gender || !serviceType || !concern) {
         showToast('Please complete the form');
 
         isSubmittingQueue = false;
@@ -3001,6 +3018,8 @@ if (patientEl) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             patientName,
+            age,
+            gender,
             serviceType,
             queueType,
             priority: queueType === 'pwd' ? 'high' : 'medium',

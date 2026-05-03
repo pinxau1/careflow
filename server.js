@@ -67,6 +67,17 @@ function normalizeEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value : null;
 }
 
+function normalizeAge(age) {
+  const value = Number(age);
+  return Number.isInteger(value) && value >= 0 && value <= 130 ? value : null;
+}
+
+function normalizeGender(gender) {
+  const allowed = new Set(['Female', 'Male', 'Non-binary', 'Prefer not to say']);
+  const value = String(gender || '').trim();
+  return allowed.has(value) ? value : null;
+}
+
 function googleAuthConfigured() {
   return !!(
     process.env.GOOGLE_CLIENT_ID &&
@@ -385,7 +396,8 @@ async function ensureAuthSchema() {
     const requiredColumns = [
       ['email', 'VARCHAR(255) NULL'],
       ['google_id', 'VARCHAR(255) NULL'],
-      ['auth_provider', "VARCHAR(50) DEFAULT 'local'"]
+      ['auth_provider', "VARCHAR(50) DEFAULT 'local'"],
+      ['gender', 'VARCHAR(30) NULL']
     ];
 
     for (const [columnName, definition] of requiredColumns) {
@@ -433,6 +445,45 @@ async function ensureAuthSchema() {
   }
 }
 
+let demographicSchemaReady = false;
+
+async function ensureDemographicSchema() {
+  if (demographicSchemaReady) return;
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const queueColumns = [
+      ['age', 'INT NULL'],
+      ['gender', 'VARCHAR(30) NULL']
+    ];
+
+    for (const [columnName, definition] of queueColumns) {
+      const [column] = await conn.execute(
+        `SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = DATABASE()
+           AND table_name = 'queues'
+           AND column_name = ?
+         LIMIT 1`,
+        [columnName]
+      );
+
+      if (!column) {
+        await conn.execute(`ALTER TABLE queues ADD COLUMN ${columnName} ${definition}`);
+      }
+    }
+
+    demographicSchemaReady = true;
+  } catch (err) {
+    console.error('Demographic schema setup failed:', err.message);
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
 async function ensureQueueTransferSchema() {
   if (queueTransferSchemaReady) return;
 
@@ -445,7 +496,9 @@ async function ensureQueueTransferSchema() {
       ['referred_from_queue_id', 'INT NULL'],
       ['transfer_reason', 'TEXT NULL'],
       ['transferred_by_user_id', 'INT NULL'],
-      ['transferred_at', 'DATETIME NULL']
+      ['transferred_at', 'DATETIME NULL'],
+      ['age', 'INT NULL'],
+      ['gender', 'VARCHAR(30) NULL']
     ];
 
     for (const [columnName, definition] of requiredColumns) {
@@ -765,6 +818,7 @@ async function performQueueTransfer(req, { queue_id, target_department_id, reaso
 
 ensureQueueTransferSchema();
 ensureAuthSchema();
+ensureDemographicSchema();
 
 const AI_HISTORY_ALLOWED_STATUSES = ['waiting', 'serving', 'done', 'cancelled', 'no_show', 'void'];
 const AI_HISTORY_DEFAULT_STATUSES = ['done', 'cancelled', 'no_show', 'void'];
@@ -2019,7 +2073,14 @@ app.get('/auth/google/callback', (req, res, next) => {
 app.post('/api/signup', async (req, res) => {
   console.log(req.body);
   const { fullName, contact, username, finalPassword } = req.body;
+  const age = normalizeAge(req.body.age);
+  const gender = normalizeGender(req.body.gender);
   const email = normalizeEmail(req.body.email);
+
+  if (age === null || !gender) {
+    return res.status(400).json({ error: 'Valid age and gender are required' });
+  }
+
   const hashed = await bcrypt.hash(finalPassword, 10);
 
   let conn;
@@ -2028,9 +2089,9 @@ app.post('/api/signup', async (req, res) => {
     await ensureAuthSchema();
     await conn.execute(
       `INSERT INTO users
-       (username, contact_number, email, password_hash, full_name, auth_provider)
-       VALUES (?, ?, ?, ?, ?, 'local')`,
-      [username, contact, email, hashed, fullName]
+       (username, contact_number, email, password_hash, full_name, age, gender, auth_provider)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'local')`,
+      [username, contact, email, hashed, fullName, age, gender]
     );
     res.json({ "success": true });
   }
@@ -2096,6 +2157,8 @@ app.get('/api/me', reqLogin, async (req, res) => {
           u.email,
           u.auth_provider,
           u.full_name,
+          u.age,
+          u.gender,
           u.role,
           u.department_id,
           d.name AS department_name
@@ -2117,6 +2180,8 @@ app.get('/api/me', reqLogin, async (req, res) => {
         email: user.email,
         auth_provider: user.auth_provider,
         full_name: user.full_name,
+        age: user.age,
+        gender: user.gender,
         role: user.role,
         department_id: user.department_id,
         department_name: user.department_name
@@ -2487,7 +2552,8 @@ app.get('/api/admin/dashboard/department/:department_id', reqLogin, reqStaffOrAd
           q.created_at,
 	          q.called_at,
 	          q.finished_at,
-	          u.age,
+	          COALESCE(q.age, u.age) AS age,
+	          COALESCE(q.gender, u.gender) AS gender,
 	          c.counter_id,
 	          c.name AS counter_name
        FROM queues q
@@ -4212,9 +4278,11 @@ app.post('/api/queue/suggest', reqLogin, async (req, res) => {
 app.post('/api/queue/create', reqLogin, async (req, res) => {
   const uid = req.session.uid;
   const { patientName, serviceType, concern, queueType, priority, ai: rawAiSuggestion } = req.body;
+  const age = normalizeAge(req.body.age);
+  const gender = normalizeGender(req.body.gender);
   const enforceUserActiveQueue = !['owner', 'admin', 'staff'].includes(req.session.role);
 
-  if (!patientName || !serviceType) {
+  if (!patientName || !serviceType || age === null || !gender) {
     return res.status(400).json({ error: 'Missing fields' });
   }
 
@@ -4227,13 +4295,15 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
   const isPriority = priority === 'high' ? 1 : 0;
   const isEmergency = 0;
 
+  await ensureDemographicSchema();
+
   const conn = await pool.getConnection();
 
   try {
     await conn.beginTransaction();
 
     const [userLock] = await conn.execute(
-      `SELECT user_id
+      `SELECT user_id, age, gender
        FROM users
        WHERE user_id = ?
        FOR UPDATE`,
@@ -4323,10 +4393,12 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
 
     const insert = await conn.execute(
       `INSERT INTO queues
-	       (full_name, category, visit_description, code, user_id, department_id, is_priority, is_emergency, ai_suggested_department, ai_category, ai_priority_level, ai_reason)
-	       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	       (full_name, age, gender, category, visit_description, code, user_id, department_id, is_priority, is_emergency, ai_suggested_department, ai_category, ai_priority_level, ai_reason)
+	       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         patientName,
+        age,
+        gender,
         category,
         concern,
         code,
@@ -4341,6 +4413,16 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
       ]
     );
 
+    if (Number(userLock.age) !== age || userLock.gender !== gender) {
+      await conn.execute(
+        `UPDATE users
+         SET age = ?,
+             gender = ?
+         WHERE user_id = ?`,
+        [age, gender, uid]
+      );
+    }
+
     await logQueueAction(conn, {
       queue_id: insert.insertId,
       actor_user_id: uid,
@@ -4349,6 +4431,8 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
       details: {
         code,
         patientName,
+        age,
+        gender,
         category,
         ai_priority_level: aiSuggestion ? aiSuggestion.priority_level : null,
         source: enforceUserActiveQueue ? 'patient' : 'admin'
@@ -4392,11 +4476,22 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
 });
 
 
-app.use(express.static('public'));
-
 app.get('/', reqLogin, reqStaffOrAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'protected/index.html'));
 });
+
+app.get('/login.html', (req, res) => {
+  res.redirect(301, '/login');
+});
+
+app.get('/signup.html', (req, res) => {
+  res.redirect(301, '/signup');
+});
+
+app.use(express.static('public', {
+  extensions: false
+}));
+
 app.get('/login', (req, res) => {
   res.sendFile(__dirname + '/public/login.html');
 });

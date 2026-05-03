@@ -521,7 +521,7 @@ if (mockAdmin) {
     e.preventDefault();
     try {
       await fetch('/logout', { method: 'POST', credentials: 'include' });
-      window.location.href = '/login.html';
+      window.location.href = '/login';
     } catch (err) {
       console.error('Logout failed', err);
     }
@@ -672,7 +672,7 @@ if (patientEl) {
       e.preventDefault();
       try {
         await fetch('/logout', { method: 'POST', credentials: 'include' });
-        window.location.href = '/login.html';
+        window.location.href = '/login';
       } catch (err) {
         console.error('Logout failed', err);
       }
@@ -680,5 +680,4 @@ if (patientEl) {
   }
 
 } 
-
 

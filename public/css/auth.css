@@ -130,7 +130,8 @@ body {
   font-size: 18px;
 }
 
-.input-container input {
+.input-container input,
+.input-container select {
   flex: 1;
   border: none;
   outline: none;
@@ -138,6 +139,12 @@ body {
   color: var(--text);
   font-family: inherit;
   font-size: 14px;
+  min-width: 0;
+}
+
+.input-container select {
+  appearance: none;
+  cursor: pointer;
 }
 
 .input-container input::placeholder {
@@ -871,10 +878,7 @@ body {
 }
 .signup-page {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 14% 18%, rgba(45, 155, 111, 0.16), transparent 28%),
-    radial-gradient(circle at 86% 12%, rgba(30, 122, 85, 0.14), transparent 30%),
-    linear-gradient(135deg, #eef7f3 0%, #f8fbfa 48%, #edf4f0 100%);
+  background: linear-gradient(135deg, #f3f5f7 0%, #fbfbfa 48%, #eef1f4 100%);
 }
 
 .signup-shell {
@@ -1031,7 +1035,7 @@ body {
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.78);
   box-shadow:
-    0 24px 70px rgba(15, 48, 34, 0.14),
+    0 24px 70px rgba(43, 53, 68, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(22px);
 }
@@ -1063,7 +1067,7 @@ body {
 
 .signup-page .form-section-label {
   margin-top: 4px;
-  color: #60766c;
+  color: #657183;
 }
 
 .signup-page .input-group {
@@ -1080,7 +1084,7 @@ body {
 .signup-page .input-container {
   height: 50px;
   border-radius: 15px;
-  border: 1px solid #dce7e1;
+  border: 1px solid #dfe4ea;
   background: rgba(255, 255, 255, 0.78);
 }
 
@@ -1252,6 +1256,7 @@ button {
 }
 
 .input-container input,
+.input-container select,
 .auth-button,
 .verify-btn {
   font-size: var(--text-base-fluid);

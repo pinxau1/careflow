@@ -272,7 +272,7 @@ setInterval(async () => { await refreshQueue(); render(); }, 15000);
 document.getElementById('btn-logout').addEventListener('click', async (e) => {
   e.preventDefault();
   await fetch('/logout', { method: 'POST', credentials: 'include' });
-  window.location.href = '/login.html';
+  window.location.href = '/login';
 });
 
 init();

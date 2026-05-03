@@ -100,6 +100,36 @@
           </div>
 
           <div class="input-group">
+            <label for="signup-age">Age <span class="required">*</span></label>
+            <div class="input-container" id="ic-age">
+              <span class="material-symbols-outlined">calendar_month</span>
+              <input
+                type="number"
+                id="signup-age"
+                name="age"
+                min="0"
+                max="130"
+                placeholder="Enter your age"
+                required
+              />
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="signup-gender">Gender <span class="required">*</span></label>
+            <div class="input-container" id="ic-gender">
+              <span class="material-symbols-outlined">wc</span>
+              <select id="signup-gender" name="gender" required>
+                <option value="">Select gender</option>
+                <option value="Female">Female</option>
+                <option value="Male">Male</option>
+                <option value="Non-binary">Non-binary</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="input-group">
             <label for="signup-email">Email</label>
             <div class="input-container" id="ic-email">
               <span class="material-symbols-outlined">mail</span>
@@ -216,7 +246,7 @@
 
         <div class="auth-switch">
           Already have an account?
-          <a href="login.html" class="auth-link">Sign in</a>
+          <a href="/login" class="auth-link">Sign in</a>
         </div>
       </div>
     </section>
