@@ -47,13 +47,14 @@ if (formSignup) {
 
     const fullName = formSignup.fullName.value;
     const contact = formSignup.contactNum.value;
+    const email = formSignup.email ? formSignup.email.value : "";
     const username = formSignup.username.value;
     const finalPassword = password.value.trim();
 
     const res = await fetch('/api/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fullName, contact, username, finalPassword })
+      body: JSON.stringify({ fullName, contact, email, username, finalPassword })
     });
 
     const data = await res.json();

@@ -83,7 +83,7 @@ async function callNext() {
     }
 
     current = data.next ?? null;
-    showToast(current ? `Now serving ${current.code}` : 'Queue is empty');
+    showToast(current ? (data.message || `Now serving ${current.code}`) : 'Queue is empty');
     await refreshQueue();
     render();
   } catch (err) {

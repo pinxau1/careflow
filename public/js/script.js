@@ -1273,7 +1273,7 @@ if (isDashboard) {
         throw new Error(data.error || 'Failed to recall queue');
       }
 
-      showToast('Recalled ' + serving.q);
+      showToast(data.message || ('Recalled ' + serving.q));
     } catch (err) {
       console.error(err);
       showToast('Failed to recall queue');
@@ -1331,7 +1331,7 @@ if (isDashboard) {
       }
 
       if (data.next) {
-        showToast('Now serving ' + data.next.code);
+        showToast(data.message || ('Now serving ' + data.next.code));
       } else {
         showToast('No waiting patients in this department');
       }
@@ -2607,6 +2607,33 @@ if (patientEl) {
     toast._t = setTimeout(() => toast.classList.remove('show'), 2400);
   }
 
+  async function loadPatientProfile() {
+    const account = document.getElementById('patient-account');
+    if (!account) return;
+
+    try {
+      const res = await fetch('/api/me');
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.user) return;
+
+      const nameEl = document.getElementById('patient-account-name');
+      const emailEl = document.getElementById('patient-account-email');
+
+      if (nameEl) {
+        nameEl.textContent = data.user.full_name || data.user.username || 'Patient';
+      }
+
+      if (emailEl) {
+        emailEl.textContent = data.user.email || '';
+      }
+
+      account.hidden = false;
+    } catch (err) {
+      console.error('Failed to load patient profile', err);
+    }
+  }
+
   function setSuggestionStatus(message) {
     if (!suggestionStatus) return;
     suggestionStatus.textContent = message || '';
@@ -3128,6 +3155,7 @@ if (patientEl) {
 
   window.addEventListener('DOMContentLoaded', async () => {
     try {
+      await loadPatientProfile();
       await loadDepartmentStatuses();
       await refreshPatientStatus();
     } catch (err) {

@@ -3,4 +3,9 @@ node_modules/
 .direnv/
 .envrc
 .codex
-
+.agents
+atlas.hcl
+database.sql
+fullback.sql
+Makefile
+queue_transfer_migration.sql

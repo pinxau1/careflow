@@ -5,6 +5,9 @@ const bcrypt = require('bcrypt');
 const session = require('express-session');
 const path = require('path');
 const Groq = require('groq-sdk');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const { sendQueueNotificationEmail } = require('./mailHelper');
 
 dotenv.config();
 const app = express();
@@ -28,6 +31,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
+app.use(passport.initialize());
 
 
 const pool = mariadb.createPool({
@@ -57,6 +61,205 @@ testDb();
 // console.log(process.env.DB_HOST, process.env.DB_PORT, process.env.DB_USER, process.env.DB_PASSWORD, process.env.DB_NAME);
 
 console.log("this is the right file. ");
+
+function normalizeEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value : null;
+}
+
+function googleAuthConfigured() {
+  return !!(
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_CALLBACK_URL
+  );
+}
+
+function redirectPathForRole(role) {
+  return ['owner', 'admin', 'staff'].includes(role) ? '/' : '/queue';
+}
+
+async function buildUniqueUsername(conn, email) {
+  const prefix = String(email || 'google-user')
+    .split('@')[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '')
+    .slice(0, 32) || 'googleuser';
+  let username = prefix;
+  let suffix = 0;
+
+  while (true) {
+    const [existing] = await conn.execute(
+      'SELECT user_id FROM users WHERE username = ? LIMIT 1',
+      [username]
+    );
+
+    if (!existing) return username;
+
+    suffix += 1;
+    username = `${prefix}${suffix}`;
+  }
+}
+
+async function findOrCreateGoogleUser(profile) {
+  const email = normalizeEmail(profile.emails && profile.emails[0] && profile.emails[0].value);
+  const googleId = profile.id ? String(profile.id) : null;
+  const displayName = String(profile.displayName || '').trim();
+  const emailVerified = profile._json && profile._json.email_verified !== false;
+
+  if (!email || !googleId || !emailVerified) {
+    const err = new Error('Google account must provide a verified email');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [existingByGoogleId] = await conn.execute(
+      `SELECT user_id, role, department_id
+       FROM users
+       WHERE google_id = ?
+       FOR UPDATE`,
+      [googleId]
+    );
+
+    if (existingByGoogleId) {
+      await conn.execute(
+        `UPDATE users
+         SET email = COALESCE(email, ?),
+             auth_provider = CASE
+               WHEN auth_provider = 'local' THEN 'google'
+               ELSE auth_provider
+             END
+         WHERE user_id = ?`,
+        [email, existingByGoogleId.user_id]
+      );
+      await conn.commit();
+      return existingByGoogleId;
+    }
+
+    const [existingByEmail] = await conn.execute(
+      `SELECT user_id, role, department_id
+       FROM users
+       WHERE email = ?
+       FOR UPDATE`,
+      [email]
+    );
+
+    if (existingByEmail) {
+      await conn.execute(
+        `UPDATE users
+         SET google_id = ?,
+             auth_provider = CASE
+               WHEN auth_provider = 'local' THEN 'google'
+               ELSE auth_provider
+             END
+         WHERE user_id = ?`,
+        [googleId, existingByEmail.user_id]
+      );
+      await conn.commit();
+      return existingByEmail;
+    }
+
+    const username = await buildUniqueUsername(conn, email);
+    const passwordHash = await bcrypt.hash(`google:${googleId}:${Date.now()}`, 10);
+    const result = await conn.execute(
+      `INSERT INTO users
+       (username, email, google_id, auth_provider, password_hash, full_name, role)
+       VALUES (?, ?, ?, 'google', ?, ?, 'patient')`,
+      [username, email, googleId, passwordHash, displayName || username]
+    );
+
+    await conn.commit();
+
+    return {
+      user_id: Number(result.insertId),
+      role: 'patient',
+      department_id: null
+    };
+  } catch (err) {
+    if (conn) await conn.rollback();
+    throw err;
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+async function logEmailNotification({ queueId, actorUserId, departmentId, action, details }) {
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+    await logQueueAction(conn, {
+      queue_id: queueId,
+      actor_user_id: actorUserId,
+      department_id: departmentId,
+      action,
+      details
+    });
+  } catch (err) {
+    console.error('Queue email notification log failed:', err.message);
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+function queueNotificationEmail(notification) {
+  if (!notification || !notification.to) return;
+
+  setImmediate(async () => {
+    try {
+      await sendQueueNotificationEmail(notification);
+      await logEmailNotification({
+        queueId: notification.queueId,
+        actorUserId: notification.actorUserId,
+        departmentId: notification.departmentId,
+        action: 'email_notification_sent',
+        details: {
+          type: notification.type,
+          to: notification.to,
+          queue_code: notification.queueCode
+        }
+      });
+    } catch (err) {
+      console.error('Queue email notification failed:', err.message);
+      await logEmailNotification({
+        queueId: notification.queueId,
+        actorUserId: notification.actorUserId,
+        departmentId: notification.departmentId,
+        action: 'email_notification_failed',
+        details: {
+          type: notification.type,
+          to: notification.to,
+          queue_code: notification.queueCode,
+          error: err.message
+        }
+      });
+    }
+  });
+}
+
+if (googleAuthConfigured()) {
+  passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: process.env.GOOGLE_CALLBACK_URL
+  }, async (accessToken, refreshToken, profile, done) => {
+    try {
+      await ensureAuthSchema();
+      const user = await findOrCreateGoogleUser(profile);
+      return done(null, user);
+    } catch (err) {
+      return done(err);
+    }
+  }));
+} else {
+  console.warn('Google OAuth is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_CALLBACK_URL to enable it.');
+}
 
 function reqOwner(req, res, next) {
   if (!req.session || req.session.role !== 'owner') {
@@ -169,6 +372,66 @@ async function logQueueAction(conn, { queue_id = null, actor_user_id = null, dep
 }
 
 let queueTransferSchemaReady = false;
+let authSchemaReady = false;
+
+async function ensureAuthSchema() {
+  if (authSchemaReady) return;
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const requiredColumns = [
+      ['email', 'VARCHAR(255) NULL'],
+      ['google_id', 'VARCHAR(255) NULL'],
+      ['auth_provider', "VARCHAR(50) DEFAULT 'local'"]
+    ];
+
+    for (const [columnName, definition] of requiredColumns) {
+      const [column] = await conn.execute(
+        `SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = DATABASE()
+           AND table_name = 'users'
+           AND column_name = ?
+         LIMIT 1`,
+        [columnName]
+      );
+
+      if (!column) {
+        await conn.execute(`ALTER TABLE users ADD COLUMN ${columnName} ${definition}`);
+      }
+    }
+
+    const uniqueIndexes = [
+      ['unique_users_email', 'email'],
+      ['unique_users_google_id', 'google_id']
+    ];
+
+    for (const [indexName, columnName] of uniqueIndexes) {
+      const [index] = await conn.execute(
+        `SELECT 1
+         FROM information_schema.statistics
+         WHERE table_schema = DATABASE()
+           AND table_name = 'users'
+           AND index_name = ?
+         LIMIT 1`,
+        [indexName]
+      );
+
+      if (!index) {
+        await conn.execute(`CREATE UNIQUE INDEX ${indexName} ON users(${columnName})`);
+      }
+    }
+
+    authSchemaReady = true;
+  } catch (err) {
+    console.error('Auth schema setup failed:', err.message);
+  } finally {
+    if (conn) conn.release();
+  }
+}
 
 async function ensureQueueTransferSchema() {
   if (queueTransferSchemaReady) return;
@@ -501,6 +764,7 @@ async function performQueueTransfer(req, { queue_id, target_department_id, reaso
 }
 
 ensureQueueTransferSchema();
+ensureAuthSchema();
 
 const AI_HISTORY_ALLOWED_STATUSES = ['waiting', 'serving', 'done', 'cancelled', 'no_show', 'void'];
 const AI_HISTORY_DEFAULT_STATUSES = ['done', 'cancelled', 'no_show', 'void'];
@@ -1718,17 +1982,55 @@ app.post('/logout', (req, res) => {
   })
 });
 
+app.get('/auth/google', (req, res, next) => {
+  if (!googleAuthConfigured()) {
+    return res.status(503).send('Google authentication is not configured.');
+  }
+
+  return passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account'
+  })(req, res, next);
+});
+
+app.get('/auth/google/callback', (req, res, next) => {
+  if (!googleAuthConfigured()) {
+    return res.status(503).send('Google authentication is not configured.');
+  }
+
+  return passport.authenticate('google', { session: false }, (err, user) => {
+    if (err) {
+      console.error('Google authentication failed:', err.message);
+      return res.redirect('/login?google=failed');
+    }
+
+    if (!user) {
+      return res.redirect('/login?google=failed');
+    }
+
+    req.session.uid = user.user_id;
+    req.session.role = user.role;
+    req.session.department_id = user.department_id;
+
+    return res.redirect(redirectPathForRole(user.role));
+  })(req, res, next);
+});
+
 app.post('/api/signup', async (req, res) => {
   console.log(req.body);
   const { fullName, contact, username, finalPassword } = req.body;
+  const email = normalizeEmail(req.body.email);
   const hashed = await bcrypt.hash(finalPassword, 10);
 
   let conn;
   try {
     conn = await pool.getConnection();
+    await ensureAuthSchema();
     await conn.execute(
-      'INSERT INTO users (username, contact_number, password_hash, full_name) VALUES (?, ?, ?, ?)',
-      [username, contact, hashed, fullName]
+      `INSERT INTO users
+       (username, contact_number, email, password_hash, full_name, auth_provider)
+       VALUES (?, ?, ?, ?, ?, 'local')`,
+      [username, contact, email, hashed, fullName]
     );
     res.json({ "success": true });
   }
@@ -1791,6 +2093,8 @@ app.get('/api/me', reqLogin, async (req, res) => {
       `SELECT 
           u.user_id,
           u.username,
+          u.email,
+          u.auth_provider,
           u.full_name,
           u.role,
           u.department_id,
@@ -1810,6 +2114,8 @@ app.get('/api/me', reqLogin, async (req, res) => {
       user: {
         user_id: user.user_id,
         username: user.username,
+        email: user.email,
+        auth_provider: user.auth_provider,
         full_name: user.full_name,
         role: user.role,
         department_id: user.department_id,
@@ -2992,6 +3298,7 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
   }
 
   const conn = await pool.getConnection();
+  let notification = null;
 
   try {
     await conn.beginTransaction();
@@ -3132,14 +3439,23 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
     }
 
     const [next] = await conn.execute(
-      `SELECT queue_id, code, full_name, category
-	       FROM queues
-	       WHERE department_id = ?
-	         AND status = 'waiting'
-	       ORDER BY is_emergency DESC,
-	                is_priority DESC,
-	                created_at ASC,
-	                queue_id ASC
+      `SELECT q.queue_id,
+              q.code,
+              q.full_name,
+              q.category,
+              q.department_id,
+              d.name AS department_name,
+              u.email,
+              COALESCE(q.full_name, u.full_name, u.username, 'Patient') AS patient_name
+	       FROM queues q
+	       JOIN departments d ON d.department_id = q.department_id
+	       LEFT JOIN users u ON u.user_id = q.user_id
+	       WHERE q.department_id = ?
+	         AND q.status = 'waiting'
+	       ORDER BY q.is_emergency DESC,
+	                q.is_priority DESC,
+	                q.created_at ASC,
+	                q.queue_id ASC
 	       LIMIT 1
 	       FOR UPDATE`,
       [department_id]
@@ -3189,8 +3505,22 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
 
     await conn.commit();
 
+    notification = next.email ? {
+      queueId: next.queue_id,
+      actorUserId: req.session.uid,
+      departmentId: next.department_id,
+      to: next.email,
+      patientName: next.patient_name,
+      queueCode: next.code,
+      departmentName: next.department_name,
+      counterName: selectedCounter ? selectedCounter.name : null,
+      type: 'call'
+    } : null;
+    queueNotificationEmail(notification);
+
     return res.json({
       success: true,
+      message: 'Queue called. Email notification sent if patient has an email.',
       completed_queue: servingRows[0] ? {
         ...servingRows[0],
         status: 'done'
@@ -3216,15 +3546,27 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
 app.post('/api/admin/queues/:queue_id/recall', reqLogin, reqStaffOrAdmin, async (req, res) => {
   const { queue_id } = req.params;
   let conn;
+  let notification = null;
 
   try {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
     const [queue] = await conn.execute(
-      `SELECT queue_id, department_id, status
-       FROM queues
-       WHERE queue_id = ?
+      `SELECT q.queue_id,
+              q.code,
+              q.full_name,
+              q.department_id,
+              q.status,
+              d.name AS department_name,
+              c.name AS counter_name,
+              u.email,
+              COALESCE(q.full_name, u.full_name, u.username, 'Patient') AS patient_name
+       FROM queues q
+       JOIN departments d ON d.department_id = q.department_id
+       LEFT JOIN users u ON u.user_id = q.user_id
+       LEFT JOIN counters c ON c.current_queue_id = q.queue_id
+       WHERE q.queue_id = ?
        FOR UPDATE`,
       [queue_id]
     );
@@ -3250,7 +3592,24 @@ app.post('/api/admin/queues/:queue_id/recall', reqLogin, reqStaffOrAdmin, async 
     });
 
     await conn.commit();
-    return res.json({ success: true });
+
+    notification = queue.email ? {
+      queueId: queue.queue_id,
+      actorUserId: req.session.uid,
+      departmentId: queue.department_id,
+      to: queue.email,
+      patientName: queue.patient_name,
+      queueCode: queue.code,
+      departmentName: queue.department_name,
+      counterName: queue.counter_name,
+      type: 'recall'
+    } : null;
+    queueNotificationEmail(notification);
+
+    return res.json({
+      success: true,
+      message: 'Queue recalled. Email notification sent if patient has an email.'
+    });
   } catch (err) {
     if (conn) await conn.rollback();
     return res.status(500).json({ error: err.message });

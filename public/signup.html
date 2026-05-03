@@ -99,6 +99,21 @@
             <small class="field-hint">Used for system alerts and account recovery</small>
           </div>
 
+          <div class="input-group">
+            <label for="signup-email">Email</label>
+            <div class="input-container" id="ic-email">
+              <span class="material-symbols-outlined">mail</span>
+              <input
+                type="email"
+                id="signup-email"
+                name="email"
+                placeholder="name@example.com"
+                autocomplete="email"
+              />
+            </div>
+            <small class="field-hint">Used for Google login linking and queue email notifications</small>
+          </div>
+
           <div class="form-divider"></div>
 
           <div class="form-section-label">Account Credentials</div>
@@ -191,6 +206,13 @@
         <button type="submit" class="auth-button" id="btn-signup">
           Create Account
         </button>
+
+        <div class="auth-divider"><span>or</span></div>
+
+        <a href="/auth/google" class="google-auth-button">
+          <span class="google-mark">G</span>
+          Continue with Google
+        </a>
 
         <div class="auth-switch">
           Already have an account?
