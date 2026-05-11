@@ -20,8 +20,37 @@ async function init() {
     };
   }
 
+  await loadDepartments();
   await refreshQueue();
   render();
+}
+
+async function loadDepartments() {
+  const serviceEl = document.getElementById('inp-service');
+  if (!serviceEl) return;
+
+  try {
+    const res = await fetch('/api/departments/status', { credentials: 'include' });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to load departments');
+    }
+
+    const departments = data.departments || [];
+    serviceEl.innerHTML = departments.map(dept => `
+      <option value="${dept.name}" ${dept.queue_status !== 'open' ? 'disabled' : ''}>
+        ${dept.name}${dept.queue_status !== 'open' ? ` (${dept.queue_status})` : ''}
+      </option>
+    `).join('');
+
+    const firstOpen = departments.find(dept => dept.queue_status === 'open');
+    if (firstOpen) serviceEl.value = firstOpen.name;
+  } catch (err) {
+    console.error(err);
+    serviceEl.innerHTML = '<option value="">No departments available</option>';
+    showToast(err.message || 'Failed to load departments');
+  }
 }
 
 
@@ -35,10 +64,17 @@ async function addToQueue() {
 
   const nameEl = document.getElementById('inp-name');
   const serviceEl = document.getElementById('inp-service');
+  const ageEl = document.getElementById('inp-age');
+  const genderEl = document.getElementById('inp-gender');
   const concernEl = document.getElementById('concern');
   const name = nameEl.value.trim();
+  const age = Number(ageEl.value);
+  const gender = genderEl.value;
 
   if (!name) { showToast('Please enter a name'); nameEl.focus(); return; }
+  if (!Number.isInteger(age) || age < 0 || age > 130) { showToast('Please enter a valid age'); ageEl.focus(); return; }
+  if (!gender) { showToast('Please select a gender'); genderEl.focus(); return; }
+  if (!serviceEl.value) { showToast('Please select a department'); serviceEl.focus(); return; }
 
   const res = await fetch('/api/queue/create', {
     method: 'POST',
@@ -46,15 +82,21 @@ async function addToQueue() {
     credentials: 'include',
     body: JSON.stringify({
       patientName: name,
+      age,
+      gender,
       serviceType: serviceEl.value,
-      concern: concernEl.value.trim()
+      queueType: 'regular',
+      priority: 'medium',
+      concern: concernEl.value.trim() || 'Walk-in queue entry'
     })
   });
   const data = await res.json();
 
-  if (!data.success) { showToast('Error: ' + data.error); return; }
+  if (!res.ok || !data.success) { showToast('Error: ' + (data.message || data.error || 'Failed to add patient')); return; }
 
   nameEl.value = '';
+  ageEl.value = '';
+  genderEl.value = '';
   concernEl.value = '';
   showToast(`${data.code} added to queue`);
   await refreshQueue();

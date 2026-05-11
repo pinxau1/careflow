@@ -509,6 +509,41 @@ textarea#concern:focus {
     linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(242, 247, 245, 0.72));
 }
 
+.queue-position-summary {
+  margin: 1rem 1.1rem 0;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(22, 134, 93, 0.16);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(135deg, rgba(232, 245, 238, 0.94), rgba(255, 255, 255, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.queue-position-label {
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+
+.queue-position-rank {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.queue-position-copy {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-top: 0.35rem;
+}
+
 .queue-list {
   list-style: none;
   max-height: calc(100vh - 320px);
@@ -1392,6 +1427,25 @@ aside {
   text-transform: uppercase;
 }
 
+.queue-item--current {
+  background: rgba(232, 245, 238, 0.96);
+  border-left: 4px solid var(--accent);
+  padding-left: calc(1.25rem - 4px);
+}
+
+.queue-item--current:hover {
+  background: rgba(232, 245, 238, 1);
+}
+
+.queue-item--current .queue-item-code {
+  color: var(--accent-dark);
+}
+
+.queue-item--current .queue-item-status {
+  color: #fff;
+  background: var(--accent-dark);
+}
+
 .schedule-card {
   min-height: 0;
   max-height: min(52vh, 520px);
@@ -2265,14 +2319,28 @@ footer {
   }
 
   aside {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .serving-panel {
+    min-height: 0;
   }
 
   .waiting-sidebar-card {
-    flex: 1 1 auto;
+    height: 100%;
     min-height: 0;
     max-height: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .waiting-sidebar-card .queue-header,
+  .waiting-sidebar-card .queue-position-summary {
+    flex: 0 0 auto;
   }
 
   .right-panel {

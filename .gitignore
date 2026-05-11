@@ -5,7 +5,6 @@ node_modules/
 .codex
 .agents
 atlas.hcl
-database.sql
-fullback.sql
+.sql
 Makefile
 queue_transfer_migration.sql

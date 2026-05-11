@@ -140,6 +140,14 @@
                 <input type="password" id="staff-password" required>
               </div>
 
+              <div class="form-group">
+                <label for="staff-role-create">Role</label>
+                <select id="staff-role-create" required>
+                  <option value="staff">Staff</option>
+                  <option value="doctor">Doctor</option>
+                </select>
+              </div>
+
               <div class="form-group full">
                 <label for="staff-department">Department</label>
                 <select id="staff-department" required>
@@ -149,7 +157,7 @@
             </div>
 
             <div class="staff-actions">
-              <button type="submit" class="btn-submit">Create Staff</button>
+              <button type="submit" class="btn-submit">Create Account</button>
             </div>
           </form>
 
@@ -362,6 +370,72 @@
             </div>
           </section>
 
+          <section class="settings-panel">
+            <div class="settings-panel-title">Create Subdepartment</div>
+
+            <form id="subdepartment-form" class="settings-form">
+              <div class="form-group">
+                <label for="subdepartment-name">Subdepartment Name</label>
+                <input
+                  type="text"
+                  id="subdepartment-name"
+                  placeholder="Example: Xray"
+                  required
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="subdepartment-department">Department</label>
+                <select id="subdepartment-department" required>
+                  <option value="">Select department</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="subdepartment-status">Initial Status</label>
+                <select id="subdepartment-status">
+                  <option value="open">Open</option>
+                  <option value="break">Break</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+
+              <button type="submit" class="btn-submit">Create Subdepartment</button>
+            </form>
+          </section>
+
+          <section class="settings-panel">
+            <div class="settings-panel-header">
+              <div>
+                <div class="settings-panel-title">Subdepartments</div>
+                <div class="settings-panel-sub">Create service areas such as Xray and Blood Test under a department</div>
+              </div>
+
+              <button class="btn-light" onclick="loadSubdepartmentsSettings()">Refresh</button>
+            </div>
+
+            <div class="settings-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Subdepartment</th>
+                    <th>Department</th>
+                    <th>Status</th>
+                    <th>Current Queue</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="settings-subdepartments-tbody">
+                  <tr>
+                    <td colspan="5" style="padding: 16px; color: var(--text3);">
+                      No subdepartments loaded.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section class="settings-panel schedule-settings-panel">
             <div class="settings-panel-header">
               <div>
@@ -524,6 +598,12 @@
                 <div class="form-group">
                   <label for="transfer-department">Target Department</label>
                   <select id="transfer-department"></select>
+                </div>
+                <div class="form-group">
+                  <label>Subdepartments</label>
+                  <div class="transfer-subdepartment-list" id="transfer-subdepartments">
+                    Select a target department.
+                  </div>
                 </div>
                 <div class="form-group">
                   <label for="transfer-notes">Reason</label>
@@ -694,7 +774,10 @@
             <div class="form-group">
             <label>Gender</label>
             <select id="f-gender">
-                <option>M</option><option>F</option><option>Other</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-binary">Non-binary</option>
+                <option value="Prefer not to say">Prefer not to say</option>
             </select>
             </div>
             <div class="form-group">

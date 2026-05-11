@@ -55,7 +55,7 @@
 
           <div class="wait-info">
             <div class="wait-stat">
-              <div class="wait-stat-label">In Queue</div>
+              <div class="wait-stat-label">Ahead</div>
               <div class="wait-stat-value" id="stat-in-queue">0</div>
             </div>
             <div class="wait-stat">
@@ -73,12 +73,14 @@
           <div class="queue-header">
             <div>
               <div class="card-title" style="margin: 0">Waiting queue</div>
-              <div class="card-subtitle">Updates automatically for your department</div>
+              <div class="card-subtitle">Updates automatically as your turn moves</div>
             </div>
           </div>
-          <ul class="queue-list" id="queue-list">
-            <li class="empty-state" id="empty-state"></li>
-          </ul>
+          <div class="queue-position-summary hidden" id="queue-position-summary" aria-live="polite">
+            <div class="queue-position-label">Your position</div>
+            <div class="queue-position-rank" id="queue-position-rank">You are #-- in line</div>
+            <div class="queue-position-copy" id="queue-position-copy">Waiting for your ticket details</div>
+          </div>
         </div>
       </aside>
 

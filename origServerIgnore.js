@@ -51,6 +51,60 @@ function reqAdmin(req, res, next) {
   next();
 }
 
+function formatQueueCode(departmentCode, globalNumber) {
+  return String(departmentCode || '') + String(Number(globalNumber || 0)).padStart(3, '0');
+}
+
+async function createVisit(conn, userId) {
+  await conn.execute(
+    `INSERT INTO visit_daily_counters (date, last_number)
+     VALUES (CURDATE(), 1)
+     ON DUPLICATE KEY UPDATE last_number = last_number + 1`
+  );
+
+  const [counter] = await conn.execute(
+    `SELECT last_number
+     FROM visit_daily_counters
+     WHERE date = CURDATE()
+     FOR UPDATE`
+  );
+
+  const globalNumber = Number(counter.last_number);
+
+  const insert = await conn.execute(
+    `INSERT INTO visits (user_id, visit_date, global_number, status)
+     VALUES (?, CURDATE(), ?, 'active')`,
+    [userId, globalNumber]
+  );
+
+  return {
+    visit_id: Number(insert.insertId),
+    global_number: globalNumber
+  };
+}
+
+async function getOrCreateActiveVisit(conn, userId) {
+  const [activeVisit] = await conn.execute(
+    `SELECT visit_id, global_number
+     FROM visits
+     WHERE user_id = ?
+       AND status = 'active'
+     ORDER BY created_at DESC, visit_id DESC
+     LIMIT 1
+     FOR UPDATE`,
+    [userId]
+  );
+
+  if (activeVisit) {
+    return {
+      visit_id: Number(activeVisit.visit_id),
+      global_number: Number(activeVisit.global_number)
+    };
+  }
+
+  return createVisit(conn, userId);
+}
+
 
 
 app.post('/api/queue', async (req, res) => {
@@ -70,16 +124,40 @@ app.post('/api/queue', async (req, res) => {
 
   try {
     conn = await pool.getConnection();
-    const dbres = await conn.execute(
-      'INSERT INTO queues (department, user_id) VALUES (?, ?)',
-      [departmentName, uid]
+    await conn.beginTransaction();
+
+    const [department] = await conn.execute(
+      `SELECT department_id, code
+       FROM departments
+       WHERE name = ?
+       FOR UPDATE`,
+      [departmentName]
     );
+
+    if (!department) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Department not found' });
+    }
+
+    const visit = await getOrCreateActiveVisit(conn, uid);
+    const code = formatQueueCode(department.code, visit.global_number);
+
+    const dbres = await conn.execute(
+      `INSERT INTO queues (full_name, user_id, department_id, visit_id, code, category)
+       VALUES (NULL, ?, ?, ?, ?, 'general')`,
+      [uid, department.department_id, visit.visit_id, code]
+    );
+
+    await conn.commit();
+
     res.json({
       success: true,
-      queueID: Number(dbres.insertId)
+      queueID: Number(dbres.insertId),
+      code
     });
   }
   catch (err) {
+    if (conn) await conn.rollback();
     res.status(500).json({ error: err.message });
   }
   finally {
@@ -321,40 +399,21 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
     await conn.beginTransaction();
 
     const [categ] = await conn.execute(
-      `SELECT code, department_id FROM departments WHERE name = ?`,
+      `SELECT code, department_id FROM departments WHERE name = ? FOR UPDATE`,
       [serviceType]
     );
 
     console.log(categ);
 
-    await conn.execute(
-      `INSERT INTO daily_counters (date, department_id, last_number)
-            VALUES (CURDATE(), ?, 1)
-            ON DUPLICATE KEY UPDATE last_number = last_number + 1`,
-      [categ.department_id]
-    );
-
-    const [counter] = await conn.execute(
-      `SELECT last_number FROM daily_counters
-            WHERE date = CURDATE() and department_id = ?`,
-      [categ.department_id]
-    );
-
-    console.log(counter.last_number);
-
-    const next = Number(counter.last_number);
-
-    console.log('now printing:');
-    console.log(next);
-
-    const code = categ.code + String(next).padStart(3, '0');
+    const visit = await getOrCreateActiveVisit(conn, uid);
+    const code = formatQueueCode(categ.code, visit.global_number);
 
     console.log(code);
 
     const insert = await conn.execute(
-      `INSERT INTO queues (full_name, category, visit_description, code, user_id, department_id)
-      VALUES (?, ?, ?, ?, ?, ?)`,
-      [patientName, serviceType, concern, code, uid, categ.department_id]
+      `INSERT INTO queues (full_name, category, visit_description, code, user_id, department_id, visit_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [patientName, serviceType, concern, code, uid, categ.department_id, visit.visit_id]
     );
 
     const [ahead] = await conn.execute(

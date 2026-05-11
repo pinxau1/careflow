@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doctor Queue</title>
+  <link rel="stylesheet" href="/css/doctor.css">
+</head>
+<body>
+  <main class="workbench">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Doctor Desk</p>
+        <h1 id="doctor-name">Doctor</h1>
+      </div>
+      <div class="dept-pill" id="doctor-department">Department</div>
+    </header>
+
+    <section class="command-grid">
+      <article class="now-panel">
+        <div class="panel-head">
+          <p class="eyebrow">Now Serving</p>
+          <span class="status-dot"></span>
+        </div>
+        <div class="queue-code" id="now-code">--</div>
+        <h2 id="now-name">No active patient</h2>
+        <p id="now-meta" class="muted">Call the next patient from your department queue.</p>
+        <div class="action-row">
+          <button class="primary" id="call-next" type="button">Call Next</button>
+          <button class="secondary" id="mark-done" type="button" disabled>Mark Done</button>
+        </div>
+      </article>
+
+      <article class="transfer-panel">
+        <div class="panel-head">
+          <p class="eyebrow">Transfer</p>
+        </div>
+        <label>
+          Target department
+          <select id="target-department"></select>
+        </label>
+        <div class="subdepartment-box" id="subdepartment-options"></div>
+        <label>
+          Notes
+          <textarea id="transfer-notes" rows="3" placeholder="Referral notes"></textarea>
+        </label>
+        <button class="primary dark" id="transfer-patient" type="button" disabled>Transfer Patient</button>
+      </article>
+    </section>
+
+    <section class="queue-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Department Queue</p>
+          <h2>Waiting List</h2>
+        </div>
+        <button class="ghost" id="refresh-queue" type="button">Refresh</button>
+      </div>
+      <div class="queue-list" id="doctor-queue"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/js/doctor.js"></script>
+</body>
+</html>

@@ -9,6 +9,7 @@ if (isDashboard) {
   let currentRole = null;
   let departments = [];
   let counters = [];
+  let subdepartments = [];
   let patients = [];
   let activeDept = null;
   let selectedCounterId = null;
@@ -40,9 +41,28 @@ if (isDashboard) {
     return parts.length ? parts.join(' · ') : 'Demographics not provided';
   }
 
+  function normalizeQueueGender(value) {
+    const gender = String(value || '').trim();
+    const genderMap = {
+      M: 'Male',
+      Male: 'Male',
+      F: 'Female',
+      Female: 'Female',
+      Other: 'Prefer not to say',
+      'Non-binary': 'Non-binary',
+      'Prefer not to say': 'Prefer not to say'
+    };
+
+    return genderMap[gender] || '';
+  }
+
   function getActiveDepartmentName() {
     const dept = departments.find(d => d.id === activeDept);
     return dept ? dept.name : '';
+  }
+
+  function departmentHasSubdepartments(departmentId = activeDept) {
+    return subdepartments.some(sd => sd.departmentId === String(departmentId));
   }
 
   async function readJsonResponse(res, fallbackMessage) {
@@ -98,6 +118,15 @@ if (isDashboard) {
       available: c.status === 'open'
     }));
 
+    subdepartments = (data.subdepartments || []).map(sd => ({
+      subdepartmentId: Number(sd.subdepartment_id),
+      departmentId: String(sd.department_id),
+      name: sd.name || `Subdepartment ${sd.subdepartment_id}`,
+      status: sd.status || 'open',
+      currentQueueCode: sd.current_queue_code || (sd.current_queue_id ? String(sd.current_queue_id).padStart(3, '0') : '---'),
+      available: sd.status === 'open'
+    }));
+
     const activeDepartment = departments.find(d => String(d.id) === String(activeDept));
     queueOpen = activeDepartment ? activeDepartment.queueStatus === 'open' : data.queue_status !== 'closed';
     currentRole = data.role;
@@ -143,6 +172,8 @@ if (isDashboard) {
       status: q.status,
       counterId: q.counter_id ? Number(q.counter_id) : null,
       counter: q.counter_name || 'Unassigned',
+      subdepartmentId: q.subdepartment_id ? Number(q.subdepartment_id) : null,
+      subdepartment: q.subdepartment_name || '',
       wait: q.status === 'serving' ? 'Serving now' : 'Waiting',
       queueType: q.category === 'priority' ? 'pwd' : 'regular',
       reason: q.visit_description || q.category || 'No visit description',
@@ -221,19 +252,26 @@ if (isDashboard) {
   function renderCounters() {
     const row = document.getElementById('counters-row');
     const deptCounters = counters.filter(c => c.departmentId === String(activeDept));
-    if (!deptCounters.length) {
+    const deptSubdepartments = subdepartments.filter(sd => sd.departmentId === String(activeDept));
+    const usesSubdepartmentQueues = deptSubdepartments.length > 0;
+    if (!deptCounters.length && !deptSubdepartments.length) {
       selectedCounterId = null;
-      row.innerHTML = `<div class="counter-card">No counters configured for this department.</div>`;
+      row.innerHTML = `<div class="counter-card">No counters or subdepartments configured for this department.</div>`;
       return;
     }
-    syncSelectedCounter();
-    row.innerHTML = deptCounters.map((c, i) => `
-	      <div class="counter-card ${Number(c.counterId) === Number(selectedCounterId) ? 'active-counter' : ''}" onclick="selectCounter(${c.counterId}, this)">
+    if (usesSubdepartmentQueues) {
+      selectedCounterId = null;
+    } else {
+      syncSelectedCounter();
+    }
+    const counterCards = usesSubdepartmentQueues ? '' : deptCounters.map(c => `
+	      <div class="counter-card ${Number(c.counterId) === Number(selectedCounterId) ? 'active-counter' : ''}" onclick="openCounterWorkspace(${c.counterId})">
 	        <div class="counter-room">${c.room}</div>
 	        <div class="counter-num">${c.num}</div>
         <div class="counter-doctor">${c.doctor}</div>
         <div class="counter-spec">${c.spec}</div>
         <div class="counter-avg">Avg ${c.avg}/patient</div>
+        <button type="button" class="counter-inline-btn" onclick="selectCounter(${c.counterId}, this.closest('.counter-card')); event.stopPropagation();">Use here</button>
         <div class="counter-toggle-row" onclick="event.stopPropagation()">
           <span class="counter-status ${c.available ? 'on' : 'off'}">${c.available ? 'Available' : 'On Break'}</span>
           <label class="toggle mini ${!queueOpen ? 'disabled' : ''}">
@@ -247,6 +285,16 @@ if (isDashboard) {
         </div>
       </div>
 	    `).join('');
+    const subdepartmentCards = deptSubdepartments.map(sd => `
+      <div class="counter-card subdepartment-card" onclick="openSubdepartmentWorkspace(${sd.subdepartmentId})">
+        <div class="counter-room">Subdepartment</div>
+        <div class="counter-num">${escapeHtml(sd.currentQueueCode)}</div>
+        <div class="counter-doctor">${escapeHtml(sd.name)}</div>
+        <div class="counter-spec">${escapeHtml(sd.status)}</div>
+        <div class="counter-avg">Click to open queue</div>
+      </div>
+    `).join('');
+    row.innerHTML = counterCards + subdepartmentCards;
   }
 
   function syncSelectedCounter() {
@@ -267,6 +315,14 @@ if (isDashboard) {
     selectedCounterId = Number(counterId);
     document.querySelectorAll('.counter-card').forEach(c => c.classList.remove('active-counter'));
     el.classList.add('active-counter');
+  }
+
+  function openCounterWorkspace(counterId) {
+    window.open('/counter?counter_id=' + encodeURIComponent(counterId), '_blank', 'noopener');
+  }
+
+  function openSubdepartmentWorkspace(subdepartmentId) {
+    window.open('/subdepartment?subdepartment_id=' + encodeURIComponent(subdepartmentId), '_blank', 'noopener');
   }
 
 
@@ -313,6 +369,28 @@ if (isDashboard) {
   }
 
   function renderNowServingCard() {
+    const actionsSection = document.querySelector('.queue-actions-section');
+    if (departmentHasSubdepartments()) {
+      const qNumber = document.getElementById('q-number');
+      const qName = document.getElementById('q-name');
+      const qSub = document.getElementById('q-sub');
+      const qPriority = document.getElementById('q-priority');
+      const qTime = document.getElementById('q-time');
+
+      if (qNumber) qNumber.textContent = '---';
+      if (qName) qName.textContent = 'Subdepartment queueing enabled';
+      if (qSub) qSub.textContent = 'Use a subdepartment card to call patients.';
+      if (qPriority) {
+        qPriority.className = 'priority-chip medium';
+        qPriority.textContent = 'Smart queue';
+      }
+      if (qTime) qTime.textContent = 'Main department queue disabled';
+      if (actionsSection) actionsSection.style.display = 'none';
+      return;
+    }
+
+    if (actionsSection) actionsSection.style.display = '';
+
     const serving = patients.find(p => p.status === 'serving');
 
     const qNumber = document.getElementById('q-number');
@@ -336,7 +414,10 @@ if (isDashboard) {
     if (qNumber) qNumber.textContent = serving.q;
     if (qName) qName.textContent = serving.name;
     if (qSub) qSub.textContent = getDemographicText(serving);
-    if (qSub && serving.counter) qSub.textContent = `${getDemographicText(serving)} · ${serving.counter}`;
+    if (qSub) {
+      const assignment = serving.subdepartment || serving.counter || '';
+      qSub.textContent = `${getDemographicText(serving)}${assignment ? ' · ' + assignment : ''}`;
+    }
 
     if (qPriority) {
       qPriority.className = 'priority-chip ' + serving.priority;
@@ -349,6 +430,22 @@ if (isDashboard) {
   }
 
   function renderNextList() {
+    if (departmentHasSubdepartments()) {
+      const nextList = document.getElementById('next-list');
+      if (nextList) {
+        nextList.innerHTML = `
+          <div class="next-item">
+            <div class="next-num">d</div>
+            <div>
+              <div class="next-pname">Queue from subdepartments</div>
+              <div class="next-psub">Main department Call Next is not used here.</div>
+            </div>
+          </div>
+        `;
+      }
+      return;
+    }
+
     const waiting = patients.filter(p => p.status === 'waiting').slice(0, 4);
     document.getElementById('next-list').innerHTML = waiting.map(p => `
       <div class="next-item">
@@ -385,7 +482,7 @@ if (isDashboard) {
           ` : ''}
         </td>
         <td data-label="Status"><span class="status-badge ${p.status}">${p.status}</span></td>
-        <td data-label="Counter">${p.counter}</td>
+        <td data-label="Counter">${escapeHtml(p.subdepartment || p.counter)}</td>
         <td class="ai-wait" data-label="AI Wait"><strong>${p.wait}</strong></td>
         <td data-label="Actions">
           <div class="action-btns">
@@ -416,6 +513,20 @@ if (isDashboard) {
     const lineCount = document.getElementById('line-count');
 
     if (!tbody) return;
+
+    if (departmentHasSubdepartments()) {
+      if (lineCount) {
+        lineCount.textContent = ' (subdepartment queues)';
+      }
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" style="color:var(--text3);padding:16px">
+            This department uses subdepartment queues. Open a subdepartment card above to call and finish patients.
+          </td>
+        </tr>
+      `;
+      return;
+    }
 
     const priorityOrder = { high: 0, medium: 1, low: 2 };
 
@@ -450,8 +561,8 @@ if (isDashboard) {
     if (servedEl) servedEl.textContent = String(dashboardStats.servedToday);
     if (waitingEl) waitingEl.textContent = String(dashboardStats.waiting);
     if (waitEl) waitEl.textContent = dashboardStats.avgWaitMin === null ? 'N/A' : `~${Math.round(dashboardStats.avgWaitMin)} min`;
-    if (servedSubEl) servedSubEl.textContent = 'From completed queues today';
-    if (waitSubEl) waitSubEl.textContent = 'Average from called queues today';
+    if (servedSubEl) servedSubEl.textContent = departmentHasSubdepartments() ? 'Completed subdepartment queues today' : 'From completed queues today';
+    if (waitSubEl) waitSubEl.textContent = departmentHasSubdepartments() ? 'Subdepartment queue wait not averaged' : 'Average from called queues today';
   }
 
   function renderHistoryDepartmentOptions() {
@@ -744,13 +855,33 @@ if (isDashboard) {
     }
 
     await loadDepartmentsForCounterForm();
+    await loadDepartmentsForSubdepartmentForm();
     await loadDepartmentsForScheduleForm();
     await loadCountersSettings();
+    await loadSubdepartmentsSettings();
     await loadScheduleSettings();
   }
 
   async function loadDepartmentsForCounterForm() {
     const select = document.getElementById('counter-department');
+    if (!select) return;
+
+    select.innerHTML = `<option value="">Select department</option>`;
+
+    if (!departments || departments.length === 0) {
+      await fetchBootstrapData();
+    }
+
+    departments.forEach(dept => {
+      const option = document.createElement('option');
+      option.value = dept.id;
+      option.textContent = dept.name;
+      select.appendChild(option);
+    });
+  }
+
+  async function loadDepartmentsForSubdepartmentForm() {
+    const select = document.getElementById('subdepartment-department');
     if (!select) return;
 
     select.innerHTML = `<option value="">Select department</option>`;
@@ -1219,6 +1350,182 @@ if (isDashboard) {
   window.deleteCounter = deleteCounter;
   window.loadCountersSettings = loadCountersSettings;
 
+  async function loadSubdepartmentsSettings() {
+    const tbody = document.getElementById('settings-subdepartments-tbody');
+    if (!tbody) return;
+
+    try {
+      const res = await fetch('/api/admin/subdepartments');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load subdepartments');
+      }
+
+      const list = data.subdepartments || [];
+      if (!list.length) {
+        tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="padding: 16px; color: var(--text3);">
+            No subdepartments configured yet.
+          </td>
+        </tr>
+      `;
+        return;
+      }
+
+      tbody.innerHTML = list.map(subdepartment => `
+      <tr>
+        <td>
+          <input
+            type="text"
+            value="${escapeHtml(subdepartment.name || '')}"
+            id="subdepartment-name-${subdepartment.subdepartment_id}"
+          />
+        </td>
+
+        <td>
+          <select id="subdepartment-dept-${subdepartment.subdepartment_id}">
+            ${getDepartmentOptions(subdepartment.department_id)}
+          </select>
+        </td>
+
+        <td>
+          <select id="subdepartment-status-${subdepartment.subdepartment_id}">
+            <option value="open" ${subdepartment.status === 'open' ? 'selected' : ''}>Open</option>
+            <option value="break" ${subdepartment.status === 'break' ? 'selected' : ''}>Break</option>
+            <option value="closed" ${subdepartment.status === 'closed' ? 'selected' : ''}>Closed</option>
+          </select>
+        </td>
+
+        <td>${escapeHtml(subdepartment.current_queue_code || 'None')}</td>
+
+        <td>
+          <div class="action-btns">
+            <button class="act-btn" onclick="saveSubdepartment(${subdepartment.subdepartment_id})">
+              Save
+            </button>
+            <button class="act-btn" onclick="openSubdepartmentWorkspace(${subdepartment.subdepartment_id})">
+              Open
+            </button>
+            <button class="act-btn del" onclick="deleteSubdepartment(${subdepartment.subdepartment_id})">
+              Delete
+            </button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Failed to load subdepartments');
+    }
+  }
+
+  function attachSubdepartmentForm() {
+    const form = document.getElementById('subdepartment-form');
+    if (!form || form.dataset.bound === '1') return;
+    form.dataset.bound = '1';
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+
+      const name = document.getElementById('subdepartment-name').value.trim();
+      const departmentId = document.getElementById('subdepartment-department').value;
+      const status = document.getElementById('subdepartment-status').value;
+
+      if (!name || !departmentId) {
+        showToast('Please enter a subdepartment name and department');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/admin/subdepartments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, departmentId, status })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to create subdepartment');
+        }
+
+        form.reset();
+        await fetchBootstrapData();
+        renderCounters();
+        await loadDepartmentsForSubdepartmentForm();
+        await loadSubdepartmentsSettings();
+
+        showToast('Subdepartment created');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
+    });
+  }
+
+  async function saveSubdepartment(subdepartmentId) {
+    const name = document.getElementById('subdepartment-name-' + subdepartmentId).value.trim();
+    const departmentId = document.getElementById('subdepartment-dept-' + subdepartmentId).value;
+    const status = document.getElementById('subdepartment-status-' + subdepartmentId).value;
+
+    if (!name || !departmentId || !status) {
+      showToast('Subdepartment fields cannot be empty');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/subdepartments/' + subdepartmentId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, departmentId, status })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update subdepartment');
+      }
+
+      await fetchBootstrapData();
+      renderCounters();
+      await loadSubdepartmentsSettings();
+
+      showToast('Subdepartment updated');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
+  }
+
+  async function deleteSubdepartment(subdepartmentId) {
+    const ok = confirm('Delete this subdepartment?');
+    if (!ok) return;
+
+    try {
+      const res = await fetch('/api/admin/subdepartments/' + subdepartmentId, { method: 'DELETE' });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete subdepartment');
+      }
+
+      await fetchBootstrapData();
+      renderCounters();
+      await loadSubdepartmentsSettings();
+
+      showToast('Subdepartment deleted');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
+  }
+
+  window.saveSubdepartment = saveSubdepartment;
+  window.deleteSubdepartment = deleteSubdepartment;
+  window.loadSubdepartmentsSettings = loadSubdepartmentsSettings;
+  window.openCounterWorkspace = openCounterWorkspace;
+  window.openSubdepartmentWorkspace = openSubdepartmentWorkspace;
+
   async function openDept(id, name) {
     activeDept = id;
 
@@ -1292,6 +1599,11 @@ if (isDashboard) {
 
     if (!activeDept) {
       showToast('No department selected');
+      return;
+    }
+
+    if (departmentHasSubdepartments()) {
+      showToast('Use a subdepartment queue for this department');
       return;
     }
 
@@ -1491,6 +1803,32 @@ if (isDashboard) {
     }));
   }
 
+  function renderTransferSubdepartments() {
+    const select = document.getElementById('transfer-department');
+    const box = document.getElementById('transfer-subdepartments');
+    if (!select || !box) return;
+
+    const targetDepartmentId = String(select.value || '');
+    const deptSubdepartments = subdepartments.filter(sd => sd.departmentId === targetDepartmentId);
+
+    if (!targetDepartmentId) {
+      box.innerHTML = '<span class="muted">Select a target department.</span>';
+      return;
+    }
+
+    if (!deptSubdepartments.length) {
+      box.innerHTML = '<span class="muted">No subdepartments configured for this department.</span>';
+      return;
+    }
+
+    box.innerHTML = deptSubdepartments.map(sd => `
+      <label class="transfer-subdepartment-option">
+        <input type="checkbox" value="${sd.subdepartmentId}">
+        <span>${escapeHtml(sd.name)} · ${escapeHtml(sd.status)}</span>
+      </label>
+    `).join('');
+  }
+
   async function showCompletedTransferPanel(sourceQueue) {
     if (!sourceQueue || !sourceQueue.queue_id) return;
     const panel = document.getElementById('queue-transfer-panel');
@@ -1522,6 +1860,8 @@ if (isDashboard) {
 	      `).join('');
 
     select.innerHTML = options || '<option value="">No available target departments</option>';
+    select.onchange = renderTransferSubdepartments;
+    renderTransferSubdepartments();
 
     const sourceEl = document.getElementById('transfer-source');
     if (sourceEl) {
@@ -1558,6 +1898,8 @@ if (isDashboard) {
     if (!transferQueueId) return;
 
     const toDepartmentId = document.getElementById('transfer-department').value;
+    const subdepartmentIds = Array.from(document.querySelectorAll('#transfer-subdepartments input:checked'))
+      .map(input => Number(input.value));
     const notes = document.getElementById('transfer-notes').value.trim();
 
     if (!toDepartmentId) {
@@ -1572,6 +1914,7 @@ if (isDashboard) {
         body: JSON.stringify({
           queue_id: transferQueueId,
           target_department_id: toDepartmentId,
+          subdepartment_ids: subdepartmentIds,
           reason: notes
         })
       });
@@ -1754,6 +2097,8 @@ if (isDashboard) {
       alert('Please complete all required fields: first name, last name, gender, and age.');
       return;
     }
+    const gender = normalizeQueueGender(sex);
+    if (!gender) { alert('Please select a valid gender.'); return; }
     const age = parseInt(ageRaw, 10);
     if (Number.isNaN(age) || age < 0) { alert('Please enter a valid age.'); return; }
     const priority = document.getElementById('f-priority').value;
@@ -1766,10 +2111,12 @@ if (isDashboard) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           patientName: name,
+          age,
+          gender,
           serviceType: activeDepartment.name,
           concern: reason
             + (counter ? ' | Preferred counter: ' + counter : '')
-            + (sex ? ' | Gender: ' + sex : '')
+            + (gender ? ' | Gender: ' + gender : '')
             + (ageRaw ? ' | Age: ' + ageRaw : ''),
           queueType: priority === 'high' ? 'pwd' : 'regular',
           priority: priority
@@ -1786,12 +2133,12 @@ if (isDashboard) {
       ['f-first', 'f-last', 'f-age', 'f-notes'].forEach(id => {
         document.getElementById(id).value = '';
       });
-      document.getElementById('f-gender').value = 'M';
+      document.getElementById('f-gender').value = 'Male';
       document.getElementById('f-priority').value = 'medium';
       showToast('Patient ' + name + ' added as Queue #' + (data.code || 'new'));
     } catch (err) {
       console.error(err);
-      showToast('Failed to add patient to queue');
+      showToast(err.message || 'Failed to add patient to queue');
     }
   }
 
@@ -1870,6 +2217,7 @@ if (isDashboard) {
       loadDepartmentsForStaffForm();
       attachStaffForm();
       attachCounterForm();
+      attachSubdepartmentForm();
       attachScheduleForm();
       const historyAiPrompt = document.getElementById('history-ai-prompt');
       if (historyAiPrompt) {
@@ -2006,6 +2354,7 @@ if (isDashboard) {
           <select id="staff-role-${staff.user_id}" onchange="syncStaffRoleDepartment(${staff.user_id})" disabled>
             <option value="admin" ${staff.role === 'admin' ? 'selected' : ''}>Admin</option>
             <option value="staff" ${staff.role === 'staff' ? 'selected' : ''}>Staff</option>
+            <option value="doctor" ${staff.role === 'doctor' ? 'selected' : ''}>Doctor</option>
           </select>
         </td>
         <td>
@@ -2047,6 +2396,7 @@ if (isDashboard) {
       const contact = document.getElementById('staff-contact').value.trim();
       const username = document.getElementById('staff-username').value.trim();
       const password = document.getElementById('staff-password').value;
+      const role = document.getElementById('staff-role-create').value;
       const departmentId = document.getElementById('staff-department').value;
 
       if (!fullName || !username || !password || !departmentId) {
@@ -2063,6 +2413,7 @@ if (isDashboard) {
             contact,
             username,
             password,
+            role,
             departmentId
           })
         });
@@ -2117,8 +2468,9 @@ if (isDashboard) {
     const department = document.getElementById('staff-dept-' + userId);
     if (!role || !department) return;
 
-    department.required = role.value === 'staff';
-    department.disabled = role.disabled || role.value !== 'staff';
+    const needsDepartment = role.value === 'staff' || role.value === 'doctor';
+    department.required = needsDepartment;
+    department.disabled = role.disabled || !needsDepartment;
   }
 
   async function toggleStaffEdit(userId) {
@@ -2147,8 +2499,8 @@ if (isDashboard) {
       return;
     }
 
-    if (role === 'staff' && !departmentId) {
-      showToast('Staff accounts require a department');
+    if ((role === 'staff' || role === 'doctor') && !departmentId) {
+      showToast('Staff and doctor accounts require a department');
       return;
     }
 
@@ -2300,6 +2652,7 @@ if (isDashboard) {
     if (role === 'owner') return 'Owner';
     if (role === 'admin') return 'Admin';
     if (role === 'staff') return departmentName ? `Staff · ${departmentName}` : 'Staff';
+    if (role === 'doctor') return departmentName ? `Doctor · ${departmentName}` : 'Doctor';
     return 'Patient';
   }
 
@@ -2576,6 +2929,7 @@ if (mockAdmin) {
 if (patientEl) {
   let departmentId = null;
   let currentQueueStatus = null;
+  let currentQueueId = null;
   let patientPoller = null;
   let isSubmittingQueue = false;
   let isCancellingQueue = false;
@@ -2599,6 +2953,9 @@ if (patientEl) {
   const submitBtn = addQueueForm ? addQueueForm.querySelector('button[type="submit"]') : null;
   const suggestBtn = document.getElementById('btn-suggest-department');
   const suggestionStatus = document.getElementById('suggestion-status');
+  const queuePositionSummary = document.getElementById('queue-position-summary');
+  const queuePositionRank = document.getElementById('queue-position-rank');
+  const queuePositionCopy = document.getElementById('queue-position-copy');
 
   function showToast(msg) {
     const toast = document.getElementById('toast');
@@ -2797,7 +3154,33 @@ if (patientEl) {
     cancelQueueBtn.disabled = isCancellingQueue;
   }
 
-  function showQueueState(code, ahead, patientName = 'Joined', departmentName = '', status = 'waiting', ai = null, referralMessage = '') {
+  function setQueuePositionSummary({ status = null, ahead = 0, position = null } = {}) {
+    if (!queuePositionSummary || !queuePositionRank || !queuePositionCopy) return;
+
+    if (!status) {
+      queuePositionSummary.classList.add('hidden');
+      queuePositionRank.textContent = 'You are #-- in line';
+      queuePositionCopy.textContent = 'Waiting for your ticket details';
+      return;
+    }
+
+    queuePositionSummary.classList.remove('hidden');
+
+    if (status === 'serving') {
+      queuePositionRank.textContent = 'You are being served now';
+      queuePositionCopy.textContent = 'Please proceed when clinic staff calls you.';
+      return;
+    }
+
+    const aheadCount = Number(ahead || 0);
+    const rank = Number(position || aheadCount + 1);
+    queuePositionRank.textContent = `You are #${rank} in line`;
+    queuePositionCopy.textContent = aheadCount === 0
+      ? 'You are next to be called.'
+      : `${aheadCount} patient${aheadCount === 1 ? '' : 's'} ahead of you.`;
+  }
+
+  function showQueueState(code, ahead, patientName = 'Joined', departmentName = '', status = 'waiting', ai = null, referralMessage = '', position = null) {
     if (completeFormPrompt) {
       completeFormPrompt.classList.add('hidden');
     }
@@ -2838,6 +3221,7 @@ if (patientEl) {
       estWait.textContent = `${Number(ahead || 0) * 5}m`;
     }
 
+    setQueuePositionSummary({ status, ahead, position });
     setCancelQueueVisible(status === 'waiting');
   }
 
@@ -2880,6 +3264,8 @@ if (patientEl) {
       estWait.textContent = '0m';
     }
 
+    currentQueueId = null;
+    setQueuePositionSummary();
     setCancelQueueVisible(false);
     setQueueOpenUI(isQueueOpen);
   }
@@ -2897,6 +3283,7 @@ if (patientEl) {
     if (data.queued) {
       departmentId = data.department_id;
       currentQueueStatus = data.status;
+      currentQueueId = data.queue_id;
 
       showQueueState(
         data.code,
@@ -2905,7 +3292,8 @@ if (patientEl) {
         data.department_name,
         data.status,
         data.ai || null,
-        data.referral_message || ''
+        data.referral_message || '',
+        data.position || null
       );
       renderPatientSchedules();
 
@@ -2913,6 +3301,7 @@ if (patientEl) {
     } else {
       departmentId = null;
       currentQueueStatus = null;
+      currentQueueId = null;
       showJoinForm();
       renderPatientSchedules();
       attachForm();
@@ -3050,6 +3439,9 @@ if (patientEl) {
         showToast('Queued: ' + data.code);
 
         departmentId = data.department_id;
+        currentQueueStatus = 'waiting';
+        currentQueueId = data.queue_id;
+        const position = data.position || Number(data.ahead || 0) + 1;
 
         showQueueState(
           data.code,
@@ -3057,7 +3449,9 @@ if (patientEl) {
           patientName,
           serviceType,
           'waiting',
-          data.ai || null
+          data.ai || null,
+          '',
+          position
         );
         renderPatientSchedules();
 
@@ -3090,6 +3484,17 @@ if (patientEl) {
       const li = document.createElement('li');
       li.classList.add('queue-item');
 
+      const isCurrentUser = Boolean(q.is_current_user) || (
+        currentQueueId !== null &&
+        currentQueueId !== undefined &&
+        Number(q.queue_id) === Number(currentQueueId)
+      );
+
+      if (isCurrentUser) {
+        li.classList.add('queue-item--current');
+        li.setAttribute('aria-current', 'true');
+      }
+
       const main = document.createElement('div');
       main.className = 'queue-item-main';
 
@@ -3107,7 +3512,7 @@ if (patientEl) {
 
       const status = document.createElement('span');
       status.className = 'queue-item-status';
-      status.textContent = q.status || 'waiting';
+      status.textContent = isCurrentUser ? 'You' : q.status || 'waiting';
 
       li.appendChild(main);
       li.appendChild(status);
@@ -3117,6 +3522,7 @@ if (patientEl) {
 
   async function loadQueue(deptId) {
     if (!deptId) return;
+    if (!document.getElementById('queue-list')) return;
 
     const res = await fetch(`/api/queue/${deptId}`);
     const data = await res.json();

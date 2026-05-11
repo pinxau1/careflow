@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subdepartment Queue</title>
+  <link rel="stylesheet" href="/css/doctor.css">
+</head>
+<body>
+  <main class="workbench compact">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Subdepartment Desk</p>
+        <h1 id="subdepartment-name">Subdepartment</h1>
+      </div>
+      <div class="dept-pill" id="subdepartment-department">Department</div>
+    </header>
+
+    <section class="command-grid single">
+      <article class="now-panel">
+        <div class="panel-head">
+          <p class="eyebrow">Now Serving</p>
+          <span class="status-dot"></span>
+        </div>
+        <div class="queue-code" id="now-code">--</div>
+        <h2 id="now-name">No active patient</h2>
+        <p id="now-meta" class="muted">Call the next patient for this subdepartment.</p>
+        <div class="action-row">
+          <button class="primary" id="call-next" type="button">Call Next</button>
+          <button class="secondary" id="mark-done" type="button" disabled>Done</button>
+          <button class="danger" id="skip-patient" type="button" disabled>Skip</button>
+        </div>
+      </article>
+    </section>
+
+    <section class="queue-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Subdepartment Queue</p>
+          <h2>Waiting List</h2>
+        </div>
+        <button class="ghost" id="refresh-queue" type="button">Refresh</button>
+      </div>
+      <div class="queue-list" id="subdepartment-queue"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/js/subdepartment.js"></script>
+</body>
+</html>

@@ -849,6 +849,24 @@ input {
     justify-content: flex-end;
     gap: 10px;
   }
+  .transfer-subdepartment-list {
+    min-height: 58px;
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text3);
+  }
+  .transfer-subdepartment-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+  }
   @media (max-width: 900px) {
     .queue-transfer-grid {
       grid-template-columns: 1fr;
@@ -2441,6 +2459,24 @@ select:focus {
 .counter-card.active-counter {
   background: #f7fbf9;
   border-color: rgba(22, 134, 93, 0.38);
+}
+
+.counter-card.subdepartment-card {
+  border-style: dashed;
+}
+
+.counter-inline-btn {
+  margin: 9px 0 2px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1.5px solid var(--green-mid);
+  border-radius: var(--radius-sm);
+  background: var(--green-light);
+  color: var(--green-dark);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .counter-room {

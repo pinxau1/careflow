@@ -8,10 +8,11 @@ CREATE TABLE users (
   google_id VARCHAR(255) NULL,
   auth_provider VARCHAR(50) DEFAULT 'local',
   password_hash VARCHAR(255) NOT NULL,
-  role ENUM('owner', 'admin', 'staff', 'patient') NOT NULL DEFAULT 'patient',
+  role ENUM('owner', 'admin', 'staff', 'doctor', 'patient') NOT NULL DEFAULT 'patient',
   full_name VARCHAR(150),
   age INT,
   gender VARCHAR(30) NULL,
+  department_id INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -24,6 +25,13 @@ CREATE TABLE departments (
   paused_until DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
+
+CREATE INDEX idx_users_department ON users(department_id);
+
+ALTER TABLE users
+  ADD CONSTRAINT fk_users_department
+  FOREIGN KEY (department_id) REFERENCES departments(department_id)
+  ON DELETE SET NULL;
 
 CREATE TABLE department_schedules (
   schedule_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -61,6 +69,38 @@ CREATE TABLE counters (
     ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE subdepartments (
+  subdepartment_id INT AUTO_INCREMENT PRIMARY KEY,
+  department_id INT NOT NULL,
+  name VARCHAR(80) NOT NULL,
+  status ENUM('open','break','closed') NOT NULL DEFAULT 'open',
+  current_queue_id INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME NULL,
+
+  KEY idx_subdepartments_department (department_id),
+
+  FOREIGN KEY (department_id) REFERENCES departments(department_id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE visits (
+  visit_id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  visit_date DATE NOT NULL,
+  global_number INT NOT NULL,
+  status ENUM('active','completed','cancelled','void') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP,
+
+  UNIQUE KEY uniq_visits_date_number (visit_date, global_number),
+  KEY idx_visits_user_status (user_id, status),
+  KEY idx_visits_date_number (visit_date, global_number),
+
+  FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 
 CREATE TABLE queues (
   queue_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -70,8 +110,11 @@ CREATE TABLE queues (
   gender VARCHAR(30) NULL,
   user_id INT NOT NULL,
   department_id INT NOT NULL,
+  counter_id INT NULL,
+  subdepartment_id INT NULL,
+  visit_id INT NOT NULL,
 
-  code VARCHAR(10) NOT NULL,
+  code VARCHAR(32) NOT NULL,
 
   category ENUM(
     'general','support','priority','complaint'
@@ -99,16 +142,34 @@ CREATE TABLE queues (
 
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE RESTRICT,
+  CONSTRAINT fk_queues_visit
+    FOREIGN KEY (visit_id) REFERENCES visits(visit_id) ON DELETE RESTRICT,
   CONSTRAINT fk_queues_referred_from
     FOREIGN KEY (referred_from_queue_id) REFERENCES queues(queue_id) ON DELETE SET NULL,
   CONSTRAINT fk_queues_transferred_by
     FOREIGN KEY (transferred_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+ALTER TABLE queues
+  ADD CONSTRAINT fk_queues_counter
+  FOREIGN KEY (counter_id) REFERENCES counters(counter_id)
+  ON DELETE SET NULL;
+
+ALTER TABLE queues
+  ADD CONSTRAINT fk_queues_subdepartment
+  FOREIGN KEY (subdepartment_id) REFERENCES subdepartments(subdepartment_id)
+  ON DELETE SET NULL;
+
 CREATE INDEX idx_counters_current_queue ON counters(current_queue_id);
+CREATE INDEX idx_subdepartments_current_queue ON subdepartments(current_queue_id);
 
 ALTER TABLE counters
   ADD CONSTRAINT fk_counters_current_queue
+  FOREIGN KEY (current_queue_id) REFERENCES queues(queue_id)
+  ON DELETE SET NULL;
+
+ALTER TABLE subdepartments
+  ADD CONSTRAINT fk_subdepartments_current_queue
   FOREIGN KEY (current_queue_id) REFERENCES queues(queue_id)
   ON DELETE SET NULL;
 
@@ -143,6 +204,11 @@ CREATE TABLE daily_counters (
     ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE visit_daily_counters (
+  date DATE PRIMARY KEY,
+  last_number INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB;
+
 CREATE TABLE system_settings (
   id INT PRIMARY KEY DEFAULT 1,
 
@@ -163,6 +229,9 @@ CREATE INDEX idx_queue_user ON queues(user_id);
 CREATE INDEX idx_queue_created ON queues(created_at);
 CREATE INDEX idx_queue_department_status ON queues(department_id, status);
 CREATE INDEX idx_queue_referred_from ON queues(referred_from_queue_id);
+CREATE INDEX idx_queues_visit ON queues(visit_id);
+CREATE INDEX idx_queues_counter_status ON queues(counter_id, status);
+CREATE INDEX idx_queues_subdepartment_status ON queues(subdepartment_id, status);
 
 CREATE UNIQUE INDEX unique_users_email ON users(email);
 CREATE UNIQUE INDEX unique_users_google_id ON users(google_id);

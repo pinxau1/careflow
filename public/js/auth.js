@@ -104,7 +104,9 @@ if (formLogin) {
     });
     const data = await res.json();
     if (data.success) {
-      if (data.role === 'owner' || data.role === 'admin' || data.role === 'staff') {
+      if (data.role === 'doctor') {
+        window.location.href = '/doctor';
+      } else if (data.role === 'owner' || data.role === 'admin' || data.role === 'staff') {
         window.location.href = '/';
       } else {
         window.location.href = '/queue';
