@@ -2769,3 +2769,37 @@ footer .fallback-contact-pill {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+@media (max-width: 640px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    height: auto;
+    min-height: 0;
+    gap: 0.65rem;
+  }
+
+  .header-right {
+    width: 100%;
+    margin-left: 0;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 0.55rem;
+  }
+
+  .patient-account {
+    align-items: flex-start;
+    max-width: 100%;
+  }
+
+  .btn-logout {
+    width: auto;
+    align-self: flex-start;
+  }
+
+  main,
+  #patientFlow {
+    padding-top: 0.85rem;
+  }
+}
