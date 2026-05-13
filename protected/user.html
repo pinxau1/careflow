@@ -19,11 +19,6 @@
           <span id="patient-account-name"></span>
           <span id="patient-account-email"></span>
         </div>
-        <div class="fallback-contact" aria-label="Clinic fallback contact">
-          <span class="fallback-contact-label">Secretary</span>
-          <a class="fallback-contact-pill" href="mailto:clinicsecretary@gmail.com">clinicsecretary@gmail.com</a>
-          <a class="fallback-contact-pill" href="tel:09771233091">09771233091</a>
-        </div>
         <button class="btn-logout" id="btn-logout">Log out</button>
       </div>
     </header>
@@ -81,6 +76,7 @@
             <div class="queue-position-rank" id="queue-position-rank">You are #-- in line</div>
             <div class="queue-position-copy" id="queue-position-copy">Waiting for your ticket details</div>
           </div>
+
         </div>
       </aside>
 
@@ -146,6 +142,13 @@
               </select>
             </div>
 
+            <div class="field field--full patient-subdepartment-field hidden" id="patient-subdepartment-field">
+              <label>Required services</label>
+              <div class="patient-subdepartment-list" id="patient-subdepartments">
+                <span class="card-subtitle">Select a department to see available services.</span>
+              </div>
+            </div>
+
             <div class="field">
               <label for="inp-queue-type">Queue Type</label>
               <select id="inp-queue-type" name="queueType">
@@ -186,17 +189,22 @@
               <div class="schedule-title">No configured schedule yet</div>
               <p>
                 Department open schedules are not available from the backend yet.
-                Please use the secretary contact in the topbar for fallback assistance.
+                Please use the secretary contact in the footer for fallback assistance.
               </p>
             </div>
           </div>
         </section>
       </div>
+
     </main>
 
     <footer>
-      CareFlow: Trust the process. Count me in. Lock in.
+      <span>CareFlow: Trust the process. Count me in. Lock in.</span>
       <span id="session-date"></span>
+      <div class="fallback-contact" aria-label="Clinic fallback contact">
+        <a class="fallback-contact-pill" href="mailto:clinicsecretary@gmail.com">clinicsecretary@gmail.com</a>
+        <a class="fallback-contact-pill" href="tel:09771233091">09771233091</a>
+      </div>
     </footer>
 
     <div id="toast"></div>

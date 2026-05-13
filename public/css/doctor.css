@@ -107,6 +107,7 @@ textarea {
 }
 
 .now-panel,
+.checklist-panel,
 .transfer-panel,
 .queue-panel {
   border: 1.5px solid var(--border);
@@ -115,6 +116,7 @@ textarea {
 }
 
 .now-panel,
+.checklist-panel,
 .transfer-panel {
   min-height: 340px;
   padding: 1.5rem;
@@ -152,10 +154,88 @@ textarea {
   color: var(--text-muted);
 }
 
+.patient-note-box {
+  margin-top: 1rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.patient-note-box .eyebrow,
+.patient-note-box p {
+  margin: 0;
+}
+
+.patient-note-box p + p,
+.patient-note-box .eyebrow + p {
+  margin-top: 0.35rem;
+}
+
+.checklist-panel {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+
+@media (min-width: 761px) {
+  .checklist-panel {
+    grid-column: 1 / 2;
+  }
+
+  .transfer-panel {
+    grid-column: 2 / 3;
+    grid-row: 1 / 3;
+  }
+}
+
+.checklist-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.checklist-panel .check-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.suggestion-state {
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text-muted);
+  padding: 0.3rem 0.65rem;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.suggestion-state.ready {
+  background: var(--accent-light);
+  color: var(--accent-dark);
+}
+
+.suggestion-state.error {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+
 .action-row {
   flex-wrap: wrap;
   gap: 0.7rem;
   margin-top: 1.6rem;
+}
+
+.queue-count-pill {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.85rem;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent-light);
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 button {
@@ -410,6 +490,7 @@ textarea:focus {
   }
 
   .now-panel,
+  .checklist-panel,
   .transfer-panel {
     min-height: auto;
     padding: 1rem;
@@ -422,5 +503,81 @@ textarea:focus {
   .queue-item {
     grid-template-columns: 1fr;
     gap: 0.45rem;
+  }
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.workbench,
+.queue-panel,
+.transfer-panel,
+.now-panel,
+.command-grid,
+.queue-list {
+  min-width: 0;
+}
+
+.workbench {
+  width: min(100%, 1320px);
+}
+
+.queue-panel {
+  overflow: auto;
+  scrollbar-width: thin;
+  max-height: min(68vh, 760px);
+}
+
+@media (max-width: 980px) {
+  .workbench {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Styling-only overlap corrections for doctor, counter, and subdepartment workbenches. */
+html,
+body {
+  height: auto;
+  min-height: 100%;
+}
+
+body {
+  overflow-y: auto;
+}
+
+.topbar {
+  flex-wrap: wrap;
+}
+
+.workbench {
+  align-items: start;
+}
+
+.now-panel,
+.checklist-panel,
+.transfer-panel,
+.queue-panel {
+  height: auto;
+  max-height: none;
+}
+
+.command-grid {
+  align-items: start;
+}
+
+.queue-panel {
+  max-height: none;
+}
+
+.queue-list {
+  max-height: min(62vh, 680px);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 760px) {
+  .queue-list {
+    max-height: none;
   }
 }

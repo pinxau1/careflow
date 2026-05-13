@@ -54,12 +54,14 @@ function renderNowServing() {
 
 function renderQueue(queues) {
   const list = $('#counter-queue');
-  if (!queues.length) {
+  const waitingQueues = (queues || []).filter(queue => queue.status === 'waiting');
+
+  if (!waitingQueues.length) {
     list.innerHTML = '<p class="muted">No active queue entries.</p>';
     return;
   }
 
-  list.innerHTML = queues.map(queue => `
+  list.innerHTML = waitingQueues.map(queue => `
     <article class="queue-item ${queue.status === 'serving' ? 'serving' : ''}">
       <div class="item-code">${escapeHtml(queue.code)}</div>
       <div>
@@ -69,6 +71,16 @@ function renderQueue(queues) {
       <div class="badge">${escapeHtml(queue.status)}</div>
     </article>
   `).join('');
+}
+
+function wireLogoutButton() {
+  const logout = document.getElementById('btn-logout');
+  if (!logout || logout.dataset.bound === '1') return;
+  logout.dataset.bound = '1';
+  logout.addEventListener('click', async () => {
+    await fetch('/logout', { method: 'POST', credentials: 'include' });
+    window.location.href = '/login';
+  });
 }
 
 async function refreshQueue() {
@@ -81,6 +93,7 @@ async function refreshQueue() {
 
   $('#counter-name').textContent = data.counter.name;
   $('#counter-department').textContent = data.counter.department_name;
+  wireLogoutButton();
   renderNowServing();
   renderQueue(data.queues);
 }

@@ -1,7 +1,0 @@
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL,
-  ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) NULL,
-  ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50) DEFAULT 'local';
-
-CREATE UNIQUE INDEX IF NOT EXISTS unique_users_email ON users(email);
-CREATE UNIQUE INDEX IF NOT EXISTS unique_users_google_id ON users(google_id);

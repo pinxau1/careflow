@@ -35,9 +35,7 @@ CREATE TABLE `departments` (
   `department_id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(50) NOT NULL,
   `code` varchar(10) NOT NULL,
-  `queue_status` enum('open','pause','closed') DEFAULT 'open',
-  `pause_message` varchar(255) DEFAULT NULL,
-  `paused_until` datetime DEFAULT NULL,
+  `queue_status` enum('open','closed') DEFAULT 'open',
   `created_at` timestamp NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`department_id`),
   UNIQUE KEY `name` (`name`),
@@ -182,7 +180,7 @@ CREATE TABLE `ui_settings` (
 LOCK TABLES `departments` WRITE;
 ALTER TABLE `departments` DISABLE KEYS;
 INSERT INTO `departments`
-  (`department_id`, `name`, `code`, `queue_status`, `pause_message`, `paused_until`, `created_at`)
+  (`department_id`, `name`, `code`, `queue_status`, `created_at`)
 VALUES
   (5,'General Medicine','GM','open',NULL,NULL,'2026-04-28 06:32:38'),
   (6,'Pediatrics','PD','open',NULL,NULL,'2026-04-28 06:32:38'),

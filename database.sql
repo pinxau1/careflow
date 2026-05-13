@@ -20,9 +20,7 @@ CREATE TABLE departments (
   department_id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(50) NOT NULL UNIQUE,
   code VARCHAR(10) NOT NULL UNIQUE,
-  queue_status ENUM('open','pause','closed') DEFAULT 'open',
-  pause_message VARCHAR(255) NULL,
-  paused_until DATETIME NULL,
+  queue_status ENUM('open','closed') DEFAULT 'open',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -73,6 +71,7 @@ CREATE TABLE subdepartments (
   subdepartment_id INT AUTO_INCREMENT PRIMARY KEY,
   department_id INT NOT NULL,
   name VARCHAR(80) NOT NULL,
+  room_number VARCHAR(30) NULL,
   status ENUM('open','break','closed') NOT NULL DEFAULT 'open',
   current_queue_id INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

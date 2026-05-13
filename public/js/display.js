@@ -8,7 +8,7 @@ const announcerTestBtn = document.getElementById('announcer-test-btn');
 const announcerStatus = document.getElementById('announcer-status');
 const announcerWarning = document.getElementById('announcer-warning');
 const params = new URLSearchParams(window.location.search);
-let featuredDepartmentId = params.get('department_id');
+let focusedDepartmentId = params.get('department_id');
 let currentServingQueue = null;
 let lastSpokenQueueCode = '';
 let lastSpokenAnnouncementKey = '';
@@ -42,6 +42,12 @@ function escHtml(value) {
     .replace(/>/g, '&gt;');
 }
 
+function escAttr(value) {
+  return escHtml(value)
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatTime(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -72,6 +78,19 @@ function formatQueueCodeForSpeech(code) {
     .split('')
     .map(char => digitWords[char] || char)
     .join(' ');
+}
+
+function getServiceLabel(queue, dept) {
+  return queue.service_label
+    || queue.destination_name
+    || queue.subdepartment_name
+    || queue.counter_name
+    || dept.name
+    || 'Service';
+}
+
+function getRoomLabel(queue) {
+  return queue.room_label || '';
 }
 
 function refreshVoices() {
@@ -129,9 +148,9 @@ function speakAnnouncement(queue) {
   if (!queue.announcement_event_id && queue.code === lastSpokenQueueCode) return;
   if (!announcerEnabled || announcerMuted) return;
 
-  const destination = queue.counter_name || queue.department_name || 'the counter';
+  const destination = queue.service_label || queue.destination_name || queue.counter_name || queue.department_name || 'the counter';
   const spokenCode = formatQueueCodeForSpeech(queue.code);
-  const message = `Now serving queue number ${spokenCode}. Please proceed to ${destination}.`;
+  const message = `Ticket ${spokenCode}, please proceed to ${destination}.`;
 
   if (speakText(message)) {
     lastSpokenQueueCode = queue.code;
@@ -241,97 +260,148 @@ function updateClock() {
   }
 }
 
-function renderDepartment(dept, featured = false) {
-  const serving = dept.serving || [];
-  const upNext = dept.up_next || [];
-  const firstServing = serving[0];
-  const remainingCount = Number(dept.waiting_count ?? upNext.length);
-  const nextItem = upNext[0];
+function getDisplayStatus(queue) {
+  return queue.status === 'serving' ? 'serving' : 'waiting';
+}
 
-  const servingHtml = firstServing
-    ? `
-      <div class="display-call-layout">
-        <div class="display-call-dot"></div>
-        <div class="display-call-info">
-          <div class="display-call-label">${escHtml(firstServing.counter_name || 'Counter pending')}</div>
-          <div class="display-ticket">${escHtml(firstServing.code)}</div>
-          <div class="display-patient">${escHtml(firstServing.full_name || 'Patient')}</div>
-          <div class="display-time">${firstServing.called_at ? 'Called ' + formatTime(firstServing.called_at) : ''}</div>
-        </div>
-      </div>
-    `
-    : `
-      <div class="display-call-layout">
-        <div class="display-call-dot muted"></div>
-        <div class="display-call-info">
-          <div class="display-call-label">No active call</div>
-          <div class="display-ticket muted">---</div>
-          <div class="display-patient">Waiting for next patient</div>
-        </div>
-      </div>
-    `;
+function getDisplayTimeLabel(queue, statusClass) {
+  const time = formatTime(queue.called_at);
+  if (!time) return '';
+  return (statusClass === 'serving' ? 'Called ' : 'Queued ') + time;
+}
 
-  const compactServingHtml = firstServing
-    ? `
-      <div class="display-compact-call">
-        <div class="display-call-dot small"></div>
-        <div class="display-call-info">
-          <div class="display-call-label">${escHtml(firstServing.code)}</div>
-          <div class="display-time">${firstServing.called_at ? 'Called ' + formatTime(firstServing.called_at) : 'Now serving'}</div>
-        </div>
+function renderQueueRow(queue, dept) {
+  const serviceLabel = getServiceLabel(queue, dept);
+  const roomLabel = getRoomLabel(queue);
+  const statusClass = getDisplayStatus(queue);
+  const statusText = statusClass === 'serving' ? 'Serving' : 'Waiting';
+  const timeLabel = getDisplayTimeLabel(queue, statusClass);
+  return `
+    <div class="display-queue-row ${statusClass}" aria-label="${escHtml(queue.code)} ${statusText}">
+      <div class="display-queue-code">${escHtml(queue.code)}</div>
+      <div class="display-queue-meta">
+        <div class="display-queue-service">${escHtml(serviceLabel)}</div>
+        <div class="display-queue-room">${escHtml(roomLabel || dept.name || '')}</div>
+        ${timeLabel ? `<div class="display-queue-time">${escHtml(timeLabel)}</div>` : ''}
       </div>
-    `
-    : `
-      <div class="display-compact-call">
-        <div class="display-call-dot muted small"></div>
-        <div class="display-call-info">
-          <div class="display-call-label muted">---</div>
-          <div class="display-time">No active call</div>
-        </div>
-      </div>
-    `;
+      <div class="display-queue-status">${escHtml(statusText)}</div>
+    </div>
+  `;
+}
+
+function renderSubqueueColumn(group, dept) {
+  const serviceLabel = group.label || dept.name;
+  const roomLabel = group.room_label || '';
+  const rows = [
+    ...(group.serving || []),
+    ...(group.waiting || [])
+  ];
 
   return `
-    <article class="display-card ${featured ? 'featured' : 'compact'}" data-department-id="${escHtml(dept.department_id)}">
+    <section class="display-service-group">
+      <div class="display-service-head">
+        <div>
+          <div class="display-service-label">${escHtml(serviceLabel)}</div>
+          <div class="display-service-room">${escHtml(roomLabel || dept.name)}</div>
+        </div>
+        <div class="display-service-count">${rows.length}</div>
+      </div>
+      <div class="display-service-list">
+        ${rows.length
+          ? rows.map(queue => renderQueueRow(queue, dept)).join('')
+          : `<div class="display-next-empty">No tickets</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderDepartment(dept, focused = false) {
+  const groups = (dept.groups || []).length
+    ? dept.groups
+    : [{
+        label: dept.name,
+        room_label: '',
+        serving: dept.serving || [],
+        waiting: dept.up_next || []
+      }];
+  const servingCount = groups.reduce((total, group) => total + (group.serving || []).length, 0);
+  const waitingCount = groups.reduce((total, group) => total + (group.waiting || []).length, 0);
+
+  return `
+    <article
+      class="display-card display-department-card ${focused ? 'is-focused' : ''}"
+      data-department-id="${escAttr(dept.department_id)}"
+      role="button"
+      tabindex="0"
+      aria-label="${focused ? 'Show all queues' : 'Focus ' + escAttr(dept.name)}"
+    >
       <div class="display-card-head">
-        <div class="display-department">${escHtml(dept.name)}</div>
+        <div>
+          <div class="display-department">${escHtml(dept.name)}</div>
+          <div class="display-department-meta">
+            ${servingCount} serving / ${waitingCount} waiting
+          </div>
+        </div>
         <div class="display-status ${escHtml(dept.queue_status)}">${escHtml(dept.queue_status)}</div>
       </div>
-      ${featured ? `
-        <div class="display-main">
-          <div class="display-serving">
-            ${servingHtml}
-          </div>
-          <aside class="display-count-panel">
-            <div class="display-count-label">Remaining</div>
-            <div class="display-count-number">${remainingCount}</div>
-            <div class="display-count-sub">waiting</div>
-          </aside>
+      <div class="display-card-body">
+        <div class="display-service-grid">
+          ${groups.map(group => renderSubqueueColumn(group, dept)).join('')}
         </div>
-        <div class="display-next">
-          <div class="display-next-title">Up Next</div>
-          ${nextItem
-            ? `
-              <div class="display-next-item">
-                <span>${escHtml(nextItem.code)}</span>
-                <small>${escHtml(nextItem.full_name || 'Patient')}</small>
-              </div>
-            `
-            : `<div class="display-next-empty">No waiting patients</div>`
-          }
-        </div>
-      ` : `
-        <div class="display-compact-body">
-          ${compactServingHtml}
-          <div class="display-compact-count">
-            <div class="display-count-label">Remaining</div>
-            <div class="display-count-number">${remainingCount}</div>
-            <div class="display-count-sub">waiting</div>
-          </div>
-        </div>
-      `}
+      </div>
     </article>
   `;
+}
+
+function setFocusedDepartment(departmentId) {
+  focusedDepartmentId = departmentId ? String(departmentId) : null;
+
+  const nextUrl = new URL(window.location.href);
+  if (focusedDepartmentId) {
+    nextUrl.searchParams.set('department_id', focusedDepartmentId);
+  } else {
+    nextUrl.searchParams.delete('department_id');
+  }
+  window.history.replaceState({}, '', nextUrl);
+
+  loadDisplay();
+}
+
+function renderDisplayControls(totalCount, visibleCount) {
+  if (!focusedDepartmentId || totalCount <= visibleCount) return '';
+
+  return `
+    <div class="display-focus-bar">
+      <button type="button" class="display-show-all-btn" id="display-show-all-btn">
+        All queues
+      </button>
+    </div>
+  `;
+}
+
+function bindDisplayInteractions() {
+  const showAllBtn = document.getElementById('display-show-all-btn');
+  if (showAllBtn) {
+    showAllBtn.addEventListener('click', event => {
+      event.stopPropagation();
+      setFocusedDepartment(null);
+    });
+  }
+
+  grid.querySelectorAll('.display-department-card').forEach(card => {
+    const departmentId = card.dataset.departmentId;
+    const toggleFocus = () => {
+      setFocusedDepartment(String(departmentId) === String(focusedDepartmentId) ? null : departmentId);
+    };
+
+    card.addEventListener('click', toggleFocus);
+    card.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      toggleFocus();
+    });
+  });
 }
 
 async function loadDisplay() {
@@ -345,34 +415,30 @@ async function loadDisplay() {
 
     const departments = data.departments || [];
     currentServingQueue = getLatestServingQueue(departments);
-    const featuredId = featuredDepartmentId || (departments[0] ? String(departments[0].department_id) : null);
-    const sortedDepartments = [...departments].sort((a, b) => {
-      if (String(a.department_id) === String(featuredId)) return -1;
-      if (String(b.department_id) === String(featuredId)) return 1;
-      return String(a.name).localeCompare(String(b.name));
-    });
-    const featuredDept = sortedDepartments.find(dept => String(dept.department_id) === String(featuredId)) || sortedDepartments[0] || null;
-    const supportingDepartments = sortedDepartments.filter(dept => !featuredDept || String(dept.department_id) !== String(featuredDept.department_id));
+
+    const sortedDepartments = [...departments]
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    let renderedDepartments = focusedDepartmentId
+      ? sortedDepartments.filter(dept => String(dept.department_id) === String(focusedDepartmentId))
+      : sortedDepartments;
+
+    if (focusedDepartmentId && !renderedDepartments.length) {
+      focusedDepartmentId = null;
+      renderedDepartments = sortedDepartments;
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete('department_id');
+      window.history.replaceState({}, '', nextUrl);
+    }
 
     grid.innerHTML = sortedDepartments.length
       ? `
-        <div class="display-layout">
-          <div class="display-featured-column">
-            ${featuredDept ? renderDepartment(featuredDept, true) : ''}
-          </div>
-          <div class="display-supporting-column">
-            ${supportingDepartments.map(dept => renderDepartment(dept, false)).join('')}
-          </div>
+        ${renderDisplayControls(sortedDepartments.length, renderedDepartments.length)}
+        <div class="display-layout display-department-grid ${focusedDepartmentId ? 'is-focused' : ''}">
+          ${renderedDepartments.map(dept => renderDepartment(dept, Boolean(focusedDepartmentId))).join('')}
         </div>
       `
       : `<div class="empty-state">No departments configured.</div>`;
-
-    grid.querySelectorAll('.display-card').forEach(card => {
-      card.addEventListener('click', () => {
-        featuredDepartmentId = card.dataset.departmentId;
-        loadDisplay();
-      });
-    });
+    bindDisplayInteractions();
 
     updated.textContent = 'Updated ' + new Date().toLocaleTimeString([], {
       hour: '2-digit',

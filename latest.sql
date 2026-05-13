@@ -194,9 +194,7 @@ CREATE TABLE `departments` (
   `department_id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(50) NOT NULL,
   `code` varchar(10) NOT NULL,
-  `queue_status` enum('open','pause','closed') DEFAULT 'open',
-  `pause_message` varchar(255) DEFAULT NULL,
-  `paused_until` datetime DEFAULT NULL,
+  `queue_status` enum('open','closed') DEFAULT 'open',
   `created_at` timestamp NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`department_id`),
   UNIQUE KEY `name` (`name`),
@@ -377,8 +375,8 @@ INSERT INTO `queue_logs` VALUES
 (122,NULL,4,7,'called_next','{\"code\":\"OB001\",\"counter_id\":null,\"counter_name\":null}','2026-05-04 02:07:42'),
 (123,NULL,4,7,'served','{\"counter_id\":null,\"source\":\"call_next\"}','2026-05-04 02:07:45'),
 (124,NULL,4,7,'email_notification_sent','{\"type\":\"call\",\"to\":\"23102075@usc.edu.ph\",\"queue_code\":\"OB001\"}','2026-05-04 02:07:46'),
-(125,NULL,4,5,'status_changed','{\"scope\":\"department_queue_status\",\"queue_status\":\"closed\",\"pause_message\":null,\"paused_until\":null}','2026-05-04 02:08:08'),
-(126,NULL,4,5,'status_changed','{\"scope\":\"department_queue_status\",\"queue_status\":\"open\",\"pause_message\":null,\"paused_until\":null}','2026-05-04 02:08:31'),
+(125,NULL,4,5,'status_changed','{\"scope\":\"department_queue_status\",\"queue_status\":\"closed\"}','2026-05-04 02:08:08'),
+(126,NULL,4,5,'status_changed','{\"scope\":\"department_queue_status\",\"queue_status\":\"open\"}','2026-05-04 02:08:31'),
 (127,NULL,4,5,'served','{\"counter_id\":null,\"source\":\"call_next\"}','2026-05-04 02:09:54'),
 (128,NULL,5,7,'queue_created','{\"code\":\"OB002\",\"patientName\":\"kairi dynasty\",\"age\":19,\"gender\":\"Female\",\"category\":\"general\",\"ai_priority_level\":\"normal\",\"source\":\"patient\"}','2026-05-04 02:16:29'),
 (129,NULL,5,7,'queue_cancelled','{\"code\":\"OB002\",\"cancelled_by\":\"patient\"}','2026-05-04 02:17:02'),
@@ -518,6 +516,8 @@ CREATE TABLE `queue_subdepartment_requirements` (
   PRIMARY KEY (`requirement_id`),
   KEY `idx_queue_subdepartment_requirements_transfer_status` (`transfer_id`,`status`),
   KEY `idx_queue_subdepartment_requirements_subdepartment_status` (`subdepartment_id`,`status`),
+  KEY `idx_qsr_subdepartment_status_queued` (`subdepartment_id`,`status`,`queued_at`),
+  KEY `idx_qsr_transfer_status_subdepartment` (`transfer_id`,`status`,`subdepartment_id`),
   CONSTRAINT `fk_queue_subdepartment_requirements_subdepartment` FOREIGN KEY (`subdepartment_id`) REFERENCES `subdepartments` (`subdepartment_id`),
   CONSTRAINT `fk_queue_subdepartment_requirements_transfer` FOREIGN KEY (`transfer_id`) REFERENCES `queue_transfers` (`transfer_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -679,6 +679,7 @@ CREATE TABLE `subdepartments` (
   `subdepartment_id` int(11) NOT NULL AUTO_INCREMENT,
   `department_id` int(11) NOT NULL,
   `name` varchar(80) NOT NULL,
+  `room_number` varchar(30) DEFAULT NULL,
   `status` enum('open','break','closed') NOT NULL DEFAULT 'open',
   `current_queue_id` int(11) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
@@ -698,8 +699,8 @@ CREATE TABLE `subdepartments` (
 LOCK TABLES `subdepartments` WRITE;
 /*!40000 ALTER TABLE `subdepartments` DISABLE KEYS */;
 INSERT INTO `subdepartments` VALUES
-(1,9,'xray','open',NULL,'2026-05-07 07:43:25',NULL),
-(2,9,'blood test','open',NULL,'2026-05-07 16:42:14',NULL);
+(1,9,'xray',NULL,'open',NULL,'2026-05-07 07:43:25',NULL),
+(2,9,'blood test',NULL,'open',NULL,'2026-05-07 16:42:14',NULL);
 /*!40000 ALTER TABLE `subdepartments` ENABLE KEYS */;
 UNLOCK TABLES;
 

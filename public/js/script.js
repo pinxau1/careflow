@@ -15,6 +15,8 @@ if (isDashboard) {
   let selectedCounterId = null;
   let transferQueueId = null;
   let transferSourceQueue = null;
+  let transferSubdepartmentsLoading = false;
+  let transferSubdepartmentsError = '';
   let activeFilter = 'all';
   let searchVal = '';
   let queueOpen = true;
@@ -99,8 +101,6 @@ if (isDashboard) {
       name: d.name,
       code: d.code,
       queueStatus: d.queue_status || 'open',
-      pauseMessage: d.pause_message || '',
-      pausedUntil: d.paused_until || '',
       type: inferDeptType(d.name),
       queue: Number(d.queue_count || 0),
       color: deptColors[i % deptColors.length],
@@ -122,6 +122,7 @@ if (isDashboard) {
       subdepartmentId: Number(sd.subdepartment_id),
       departmentId: String(sd.department_id),
       name: sd.name || `Subdepartment ${sd.subdepartment_id}`,
+      roomNumber: sd.room_number || '',
       status: sd.status || 'open',
       currentQueueCode: sd.current_queue_code || (sd.current_queue_id ? String(sd.current_queue_id).padStart(3, '0') : '---'),
       available: sd.status === 'open'
@@ -173,7 +174,9 @@ if (isDashboard) {
       counterId: q.counter_id ? Number(q.counter_id) : null,
       counter: q.counter_name || 'Unassigned',
       subdepartmentId: q.subdepartment_id ? Number(q.subdepartment_id) : null,
-      subdepartment: q.subdepartment_name || '',
+      subdepartment: q.subdepartment_name
+        ? `${q.subdepartment_name}${q.subdepartment_room_number ? ' · Room ' + q.subdepartment_room_number : ''}`
+        : '',
       wait: q.status === 'serving' ? 'Serving now' : 'Waiting',
       queueType: q.category === 'priority' ? 'pwd' : 'regular',
       reason: q.visit_description || q.category || 'No visit description',
@@ -287,7 +290,7 @@ if (isDashboard) {
 	    `).join('');
     const subdepartmentCards = deptSubdepartments.map(sd => `
       <div class="counter-card subdepartment-card" onclick="openSubdepartmentWorkspace(${sd.subdepartmentId})">
-        <div class="counter-room">Subdepartment</div>
+        <div class="counter-room">${escapeHtml(sd.roomNumber ? 'Room ' + sd.roomNumber : 'Subdepartment')}</div>
         <div class="counter-num">${escapeHtml(sd.currentQueueCode)}</div>
         <div class="counter-doctor">${escapeHtml(sd.name)}</div>
         <div class="counter-spec">${escapeHtml(sd.status)}</div>
@@ -800,12 +803,8 @@ if (isDashboard) {
     if (queueManagementContent) queueManagementContent.classList.toggle('queue-closed-dim', !queueOpen);
     const dept = departments.find(d => String(d.id) === String(activeDept));
     const statusSelect = document.getElementById('dept-status-select');
-    const pauseInput = document.getElementById('dept-pause-message');
-    const pausedUntilInput = document.getElementById('dept-paused-until');
     const displayLink = document.getElementById('open-display-link');
-    if (statusSelect && dept) statusSelect.value = dept.queueStatus || 'open';
-    if (pauseInput && dept) pauseInput.value = dept.pauseMessage || '';
-    if (pausedUntilInput && dept) pausedUntilInput.value = formatDateTimeLocal(dept.pausedUntil);
+    if (statusSelect && dept) statusSelect.value = dept.queueStatus === 'closed' ? 'closed' : 'open';
     if (displayLink) {
       displayLink.href = activeDept ? `/display?department_id=${encodeURIComponent(activeDept)}` : '/display';
     }
@@ -1366,7 +1365,7 @@ if (isDashboard) {
       if (!list.length) {
         tbody.innerHTML = `
         <tr>
-          <td colspan="5" style="padding: 16px; color: var(--text3);">
+          <td colspan="6" style="padding: 16px; color: var(--text3);">
             No subdepartments configured yet.
           </td>
         </tr>
@@ -1381,6 +1380,15 @@ if (isDashboard) {
             type="text"
             value="${escapeHtml(subdepartment.name || '')}"
             id="subdepartment-name-${subdepartment.subdepartment_id}"
+          />
+        </td>
+
+        <td>
+          <input
+            type="text"
+            value="${escapeHtml(subdepartment.room_number || '')}"
+            maxlength="30"
+            id="subdepartment-room-${subdepartment.subdepartment_id}"
           />
         </td>
 
@@ -1430,11 +1438,12 @@ if (isDashboard) {
       e.preventDefault();
 
       const name = document.getElementById('subdepartment-name').value.trim();
+      const roomNumber = document.getElementById('subdepartment-room').value.trim();
       const departmentId = document.getElementById('subdepartment-department').value;
       const status = document.getElementById('subdepartment-status').value;
 
-      if (!name || !departmentId) {
-        showToast('Please enter a subdepartment name and department');
+      if (!name || !roomNumber || !departmentId) {
+        showToast('Please enter a subdepartment name, room number, and department');
         return;
       }
 
@@ -1442,7 +1451,7 @@ if (isDashboard) {
         const res = await fetch('/api/admin/subdepartments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, departmentId, status })
+          body: JSON.stringify({ name, roomNumber, departmentId, status })
         });
 
         const data = await res.json();
@@ -1466,10 +1475,11 @@ if (isDashboard) {
 
   async function saveSubdepartment(subdepartmentId) {
     const name = document.getElementById('subdepartment-name-' + subdepartmentId).value.trim();
+    const roomNumber = document.getElementById('subdepartment-room-' + subdepartmentId).value.trim();
     const departmentId = document.getElementById('subdepartment-dept-' + subdepartmentId).value;
     const status = document.getElementById('subdepartment-status-' + subdepartmentId).value;
 
-    if (!name || !departmentId || !status) {
+    if (!name || !roomNumber || !departmentId || !status) {
       showToast('Subdepartment fields cannot be empty');
       return;
     }
@@ -1478,7 +1488,7 @@ if (isDashboard) {
       const res = await fetch('/api/admin/subdepartments/' + subdepartmentId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, departmentId, status })
+        body: JSON.stringify({ name, roomNumber, departmentId, status })
       });
       const data = await res.json();
 
@@ -1754,18 +1764,14 @@ if (isDashboard) {
     }
 
     const status = document.getElementById('dept-status-select').value;
-    const pauseMessage = document.getElementById('dept-pause-message').value.trim();
-    const pausedUntilRaw = document.getElementById('dept-paused-until').value;
-    const pausedUntil = pausedUntilRaw ? pausedUntilRaw.replace('T', ' ') + ':00' : null;
+    const queueStatus = status === 'closed' ? 'closed' : 'open';
 
     try {
       const res = await fetch('/api/admin/departments/' + activeDept + '/queue-status', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          queue_status: status,
-          pause_message: pauseMessage,
-          paused_until: pausedUntil
+          queue_status: queueStatus
         })
       });
 
@@ -1778,8 +1784,6 @@ if (isDashboard) {
       const dept = departments.find(d => String(d.id) === String(activeDept));
       if (dept) {
         dept.queueStatus = data.queue_status;
-        dept.pauseMessage = data.pause_message || '';
-        dept.pausedUntil = data.paused_until || '';
       }
 
       queueOpen = data.queue_status === 'open';
@@ -1803,6 +1807,31 @@ if (isDashboard) {
     }));
   }
 
+  function cacheTransferSubdepartments(departmentId, rows) {
+    const targetDepartmentId = String(departmentId || '');
+    const normalized = (rows || []).map(sd => ({
+      subdepartmentId: Number(sd.subdepartment_id),
+      departmentId: String(sd.department_id),
+      name: sd.name || `Subdepartment ${sd.subdepartment_id}`,
+      roomNumber: sd.room_number || '',
+      status: sd.status || 'open',
+      currentQueueCode: sd.current_queue_code || (sd.current_queue_id ? String(sd.current_queue_id).padStart(3, '0') : '---'),
+      available: sd.status === 'open'
+    })).filter(sd => sd.subdepartmentId && sd.departmentId === targetDepartmentId);
+
+    subdepartments = subdepartments
+      .filter(sd => sd.departmentId !== targetDepartmentId)
+      .concat(normalized);
+
+    return normalized;
+  }
+
+  async function loadTransferSubdepartments(departmentId) {
+    const res = await fetch('/api/departments/' + encodeURIComponent(departmentId) + '/subdepartments');
+    const data = await readJsonResponse(res, 'Failed to load subdepartments');
+    return cacheTransferSubdepartments(departmentId, data.subdepartments || []);
+  }
+
   function renderTransferSubdepartments() {
     const select = document.getElementById('transfer-department');
     const box = document.getElementById('transfer-subdepartments');
@@ -1816,6 +1845,16 @@ if (isDashboard) {
       return;
     }
 
+    if (transferSubdepartmentsLoading) {
+      box.innerHTML = '<span class="muted">Loading subdepartments...</span>';
+      return;
+    }
+
+    if (transferSubdepartmentsError) {
+      box.innerHTML = `<span class="muted">${escapeHtml(transferSubdepartmentsError)}</span>`;
+      return;
+    }
+
     if (!deptSubdepartments.length) {
       box.innerHTML = '<span class="muted">No subdepartments configured for this department.</span>';
       return;
@@ -1824,9 +1863,34 @@ if (isDashboard) {
     box.innerHTML = deptSubdepartments.map(sd => `
       <label class="transfer-subdepartment-option">
         <input type="checkbox" value="${sd.subdepartmentId}">
-        <span>${escapeHtml(sd.name)} · ${escapeHtml(sd.status)}</span>
+        <span>${escapeHtml(sd.name)}${sd.roomNumber ? ` · Room ${escapeHtml(sd.roomNumber)}` : ''} · ${escapeHtml(sd.status)}</span>
       </label>
     `).join('');
+  }
+
+  async function refreshTransferSubdepartments() {
+    const select = document.getElementById('transfer-department');
+    const targetDepartmentId = String(select && select.value || '');
+    transferSubdepartmentsError = '';
+
+    if (!targetDepartmentId) {
+      renderTransferSubdepartments();
+      return;
+    }
+
+    transferSubdepartmentsLoading = true;
+    renderTransferSubdepartments();
+
+    try {
+      await loadTransferSubdepartments(targetDepartmentId);
+    } catch (err) {
+      console.error(err);
+      transferSubdepartmentsError = err.message || 'Failed to load subdepartments';
+      showToast(transferSubdepartmentsError);
+    } finally {
+      transferSubdepartmentsLoading = false;
+      renderTransferSubdepartments();
+    }
   }
 
   async function showCompletedTransferPanel(sourceQueue) {
@@ -1860,8 +1924,8 @@ if (isDashboard) {
 	      `).join('');
 
     select.innerHTML = options || '<option value="">No available target departments</option>';
-    select.onchange = renderTransferSubdepartments;
-    renderTransferSubdepartments();
+    select.onchange = () => refreshTransferSubdepartments().catch(err => showToast(err.message));
+    await refreshTransferSubdepartments();
 
     const sourceEl = document.getElementById('transfer-source');
     if (sourceEl) {
@@ -1904,6 +1968,16 @@ if (isDashboard) {
 
     if (!toDepartmentId) {
       showToast('Select a target department');
+      return;
+    }
+
+    if (transferSubdepartmentsLoading) {
+      showToast('Wait for subdepartments to finish loading');
+      return;
+    }
+
+    if (transferSubdepartmentsError) {
+      showToast(transferSubdepartmentsError);
       return;
     }
 
@@ -2345,7 +2419,7 @@ if (isDashboard) {
           <input type="text" id="staff-name-${staff.user_id}" value="${escapeHtml(staff.full_name || '')}" disabled>
         </td>
         <td>
-          <input type="text" id="staff-username-${staff.user_id}" value="${escapeHtml(staff.username || '')}" disabled>
+          <span class="staff-username-static">${escapeHtml(staff.username || '')}</span>
         </td>
         <td>
           <input type="tel" id="staff-contact-${staff.user_id}" value="${escapeHtml(staff.contact_number || '')}" disabled>
@@ -2455,7 +2529,7 @@ if (isDashboard) {
     if (!row || !editButton) return;
 
     row.dataset.editing = editing ? '1' : '0';
-    ['name', 'username', 'contact', 'role', 'dept', 'password'].forEach(field => {
+    ['name', 'contact', 'role', 'dept', 'password'].forEach(field => {
       const input = document.getElementById(`staff-${field}-${userId}`);
       if (input) input.disabled = !editing;
     });
@@ -2488,14 +2562,13 @@ if (isDashboard) {
 
   async function saveStaffAccount(userId) {
     const fullName = document.getElementById('staff-name-' + userId).value.trim();
-    const username = document.getElementById('staff-username-' + userId).value.trim();
     const contact = document.getElementById('staff-contact-' + userId).value.trim();
     const role = document.getElementById('staff-role-' + userId).value;
     const departmentId = document.getElementById('staff-dept-' + userId).value;
     const password = document.getElementById('staff-password-' + userId).value;
 
-    if (!fullName || !username || !role) {
-      showToast('Name, username, and role are required');
+    if (!fullName || !role) {
+      showToast('Name and role are required');
       return;
     }
 
@@ -2510,7 +2583,6 @@ if (isDashboard) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fullName,
-          username,
           contact,
           role,
           departmentId,
@@ -2938,6 +3010,11 @@ if (patientEl) {
   let latestSuggestion = null;
   let lastSuggestedConcern = '';
   let isSuggesting = false;
+  let patientSubdepartments = [];
+  let patientSubdepartmentsLoading = false;
+  let patientSubdepartmentRequestId = 0;
+  let lastRouteSignature = null;
+  let routeInitialized = false;
 
   const addQueueForm = document.getElementById('add-queue-form');
   const completeFormPrompt = document.getElementById('completeFormLabel');
@@ -2953,6 +3030,8 @@ if (patientEl) {
   const submitBtn = addQueueForm ? addQueueForm.querySelector('button[type="submit"]') : null;
   const suggestBtn = document.getElementById('btn-suggest-department');
   const suggestionStatus = document.getElementById('suggestion-status');
+  const patientSubdepartmentField = document.getElementById('patient-subdepartment-field');
+  const patientSubdepartmentList = document.getElementById('patient-subdepartments');
   const queuePositionSummary = document.getElementById('queue-position-summary');
   const queuePositionRank = document.getElementById('queue-position-rank');
   const queuePositionCopy = document.getElementById('queue-position-copy');
@@ -3119,7 +3198,7 @@ if (patientEl) {
     isQueueOpen = open;
 
     if (statusText) {
-      statusText.textContent = open ? 'Open' : status === 'pause' ? 'Paused' : 'Closed';
+      statusText.textContent = open ? 'Open' : 'Closed';
     }
 
     if (statusDot) {
@@ -3180,7 +3259,48 @@ if (patientEl) {
       : `${aheadCount} patient${aheadCount === 1 ? '' : 's'} ahead of you.`;
   }
 
-  function showQueueState(code, ahead, patientName = 'Joined', departmentName = '', status = 'waiting', ai = null, referralMessage = '', position = null) {
+  function getQueueDestinationLabel(departmentName = '', route = {}) {
+    const destination = route && route.subdepartment_destination
+      ? route.subdepartment_destination
+      : '';
+    if (destination && departmentName) return `${departmentName} - ${destination}`;
+    return destination || departmentName || '';
+  }
+
+  function updateRouteNotification(data) {
+    if (!data || !data.queued) {
+      lastRouteSignature = null;
+      routeInitialized = false;
+      return;
+    }
+
+    const routeSignature = [
+      data.queue_id || '',
+      data.subdepartment_id || '',
+      data.subdepartment_destination || '',
+      data.routing_event_id || ''
+    ].join('|');
+    const previousRoute = lastRouteSignature ? lastRouteSignature.split('|') : [];
+    const routeChanged = previousRoute[1] !== String(data.subdepartment_id || '')
+      || previousRoute[2] !== String(data.subdepartment_destination || '');
+
+    if (
+      routeInitialized &&
+      data.status === 'waiting' &&
+      lastRouteSignature &&
+      routeChanged &&
+      data.subdepartment_destination
+    ) {
+      showToast(`Your queue was moved to ${data.subdepartment_destination}.`);
+    }
+
+    lastRouteSignature = routeSignature;
+    routeInitialized = true;
+  }
+
+  function showQueueState(code, ahead, patientName = 'Joined', departmentName = '', status = 'waiting', ai = null, referralMessage = '', position = null, route = {}) {
+    patientEl.classList.add('has-active-queue');
+
     if (completeFormPrompt) {
       completeFormPrompt.classList.add('hidden');
     }
@@ -3200,7 +3320,7 @@ if (patientEl) {
     }
 
     if (nowService) {
-      nowService.textContent = departmentName || '';
+      nowService.textContent = getQueueDestinationLabel(departmentName, route);
     }
     const aiNote = document.getElementById('now-ai-note');
     if (aiNote) {
@@ -3226,6 +3346,8 @@ if (patientEl) {
   }
 
   function showJoinForm() {
+    patientEl.classList.remove('has-active-queue');
+
     if (completeFormPrompt) {
       completeFormPrompt.classList.remove('hidden');
       completeFormPrompt.textContent = isQueueOpen ? 'Complete the form to join' : 'Queue is currently closed';
@@ -3265,6 +3387,7 @@ if (patientEl) {
     }
 
     currentQueueId = null;
+    updateRouteNotification({ queued: false });
     setQueuePositionSummary();
     setCancelQueueVisible(false);
     setQueueOpenUI(isQueueOpen);
@@ -3281,6 +3404,7 @@ if (patientEl) {
     setQueueOpenUI(data.queue_open, data.queue_status);
 
     if (data.queued) {
+      updateRouteNotification(data);
       departmentId = data.department_id;
       currentQueueStatus = data.status;
       currentQueueId = data.queue_id;
@@ -3293,7 +3417,13 @@ if (patientEl) {
         data.status,
         data.ai || null,
         data.referral_message || '',
-        data.position || null
+        data.position || null,
+        {
+          subdepartment_id: data.subdepartment_id || null,
+          subdepartment_destination: data.subdepartment_destination || '',
+          subdepartment_name: data.subdepartment_name || '',
+          subdepartment_room_number: data.subdepartment_room_number || ''
+        }
       );
       renderPatientSchedules();
 
@@ -3342,6 +3472,101 @@ if (patientEl) {
     }
   }
 
+  function getSelectedPatientDepartment() {
+    if (!addQueueForm || !addQueueForm.serviceType) return null;
+    const selectedName = addQueueForm.serviceType.value;
+    return departmentStatuses.find(dept => dept.name === selectedName) || null;
+  }
+
+  function getSelectedPatientSubdepartmentIds() {
+    if (!patientSubdepartmentList) return [];
+    return Array.from(patientSubdepartmentList.querySelectorAll('input[type="checkbox"]:checked'))
+      .map(input => Number(input.value))
+      .filter(value => Number.isInteger(value) && value > 0);
+  }
+
+  function renderPatientSubdepartments() {
+    if (!patientSubdepartmentField || !patientSubdepartmentList) return;
+
+    patientSubdepartmentList.innerHTML = '';
+
+    if (patientSubdepartmentsLoading) {
+      patientSubdepartmentField.classList.remove('hidden');
+      patientSubdepartmentList.innerHTML = '<span class="card-subtitle">Loading services...</span>';
+      return;
+    }
+
+    if (!patientSubdepartments.length) {
+      patientSubdepartmentField.classList.add('hidden');
+      return;
+    }
+
+    patientSubdepartmentField.classList.remove('hidden');
+
+    patientSubdepartments.forEach(subdepartment => {
+      const label = document.createElement('label');
+      label.className = 'patient-subdepartment-option';
+
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = subdepartment.subdepartment_id;
+      input.disabled = subdepartment.status !== 'open';
+
+      const text = document.createElement('span');
+      const room = subdepartment.room_number ? `, Room ${subdepartment.room_number}` : '';
+      const status = subdepartment.status === 'open' ? '' : ` (${subdepartment.status})`;
+      text.textContent = `${subdepartment.name}${room}${status}`;
+
+      label.appendChild(input);
+      label.appendChild(text);
+      patientSubdepartmentList.appendChild(label);
+    });
+  }
+
+  async function refreshPatientSubdepartments() {
+    if (addQueueForm && addQueueForm.classList.contains('hidden')) {
+      patientSubdepartments = [];
+      patientSubdepartmentsLoading = false;
+      renderPatientSubdepartments();
+      return;
+    }
+
+    const selectedDepartment = getSelectedPatientDepartment();
+    const requestId = ++patientSubdepartmentRequestId;
+
+    patientSubdepartments = [];
+
+    if (!selectedDepartment || !selectedDepartment.department_id) {
+      renderPatientSubdepartments();
+      return;
+    }
+
+    patientSubdepartmentsLoading = true;
+    renderPatientSubdepartments();
+
+    try {
+      const res = await fetch(`/api/departments/${encodeURIComponent(selectedDepartment.department_id)}/subdepartments`);
+      const data = await res.json();
+
+      if (requestId !== patientSubdepartmentRequestId) return;
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || data.message || 'Failed to load services');
+      }
+
+      patientSubdepartments = data.subdepartments || [];
+    } catch (err) {
+      console.error(err);
+      patientSubdepartments = [];
+      showToast(err.message || 'Failed to load services');
+    } finally {
+      if (requestId === patientSubdepartmentRequestId) {
+        patientSubdepartmentsLoading = false;
+        renderPatientSubdepartments();
+      }
+    }
+  }
+
   function attachForm() {
     if (!addQueueForm || addQueueForm.dataset.bound === '1') return;
 
@@ -3383,10 +3608,35 @@ if (patientEl) {
       const serviceType = addQueueForm.serviceType.value;
       const queueType = addQueueForm.queueType.value;
       const concern = addQueueForm.concern.value.trim();
+      const subdepartmentIds = getSelectedPatientSubdepartmentIds();
 
       if (!patientName || !age || !gender || !serviceType || !concern) {
         showToast('Please complete the form');
 
+        isSubmittingQueue = false;
+
+        if (submitBtn) {
+          submitBtn.disabled = !isQueueOpen;
+          submitBtn.textContent = isQueueOpen ? 'Add' : 'Queue Closed';
+        }
+
+        return;
+      }
+
+      if (patientSubdepartmentsLoading) {
+        showToast('Wait for services to finish loading');
+        isSubmittingQueue = false;
+
+        if (submitBtn) {
+          submitBtn.disabled = !isQueueOpen;
+          submitBtn.textContent = isQueueOpen ? 'Add' : 'Queue Closed';
+        }
+
+        return;
+      }
+
+      if (patientSubdepartments.length && !subdepartmentIds.length) {
+        showToast('Please select at least one required service');
         isSubmittingQueue = false;
 
         if (submitBtn) {
@@ -3413,6 +3663,7 @@ if (patientEl) {
             queueType,
             priority: queueType === 'pwd' ? 'high' : 'medium',
             concern,
+            subdepartment_ids: subdepartmentIds,
             ai: aiPayload
           })
         });
@@ -3451,7 +3702,13 @@ if (patientEl) {
           'waiting',
           data.ai || null,
           '',
-          position
+          position,
+          {
+            subdepartment_id: data.subdepartment_id || null,
+            subdepartment_destination: data.subdepartment_destination || '',
+            subdepartment_name: data.subdepartment_name || '',
+            subdepartment_room_number: data.subdepartment_room_number || ''
+          }
         );
         renderPatientSchedules();
 
@@ -3630,8 +3887,8 @@ if (patientEl) {
     }
 
     list.innerHTML = departmentStatuses.map(dept => {
-      const status = dept.queue_status || 'open';
-      const label = status === 'open' ? 'Open' : status === 'pause' ? 'Paused' : 'Closed';
+      const status = dept.queue_status === 'open' ? 'open' : 'closed';
+      const label = status === 'open' ? 'Open' : 'Closed';
 
       return `
       <div class="dept-status-item">
@@ -3747,6 +4004,7 @@ if (patientEl) {
     const select = document.getElementById('inp-service');
     if (!select) return;
 
+    const previousValue = select.value;
     select.innerHTML = '';
 
     departmentStatuses.forEach(dept => {
@@ -3762,14 +4020,26 @@ if (patientEl) {
     });
 
     const firstOpen = departmentStatuses.find(d => d.queue_status === 'open');
+    const previousOption = Array.from(select.options).find(option => option.value === previousValue && !option.disabled);
 
-    if (firstOpen) {
+    if (previousOption) {
+      select.value = previousValue;
+    } else if (firstOpen) {
       select.value = firstOpen.name;
     }
 
     if (select.dataset.scheduleBound !== '1') {
       select.dataset.scheduleBound = '1';
-      select.addEventListener('change', renderPatientSchedules);
+      select.addEventListener('change', () => {
+        renderPatientSchedules();
+        refreshPatientSubdepartments().catch(err => {
+          console.error(err);
+        });
+      });
     }
+
+    refreshPatientSubdepartments().catch(err => {
+      console.error(err);
+    });
   }
 }

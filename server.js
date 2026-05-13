@@ -78,6 +78,19 @@ function normalizeGender(gender) {
   return allowed.has(value) ? value : null;
 }
 
+function normalizeRoomNumber(roomNumber) {
+  const value = String(roomNumber || '').trim();
+  if (!value || value.length > 30) return null;
+  return value;
+}
+
+function formatSubdepartmentDestination(name, roomNumber) {
+  const cleanName = String(name || '').trim();
+  const cleanRoom = String(roomNumber || '').trim();
+  if (cleanName && cleanRoom) return `${cleanName}, Room ${cleanRoom}`;
+  return cleanName || (cleanRoom ? `Room ${cleanRoom}` : '');
+}
+
 const QUEUE_INSERT_COLUMNS = new Set([
   'full_name',
   'user_id',
@@ -555,6 +568,7 @@ async function updateVisitStatus(conn, visitId) {
 
 let queueTransferSchemaReady = false;
 let authSchemaReady = false;
+let subdepartmentSchemaReady = false;
 
 async function ensureAuthSchema() {
   if (authSchemaReady) return;
@@ -650,6 +664,35 @@ async function ensureDemographicSchema() {
     demographicSchemaReady = true;
   } catch (err) {
     console.error('Demographic schema setup failed:', err.message);
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+async function ensureSubdepartmentSchema() {
+  if (subdepartmentSchemaReady) return;
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const [roomColumn] = await conn.execute(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'subdepartments'
+         AND column_name = 'room_number'
+       LIMIT 1`
+    );
+
+    if (!roomColumn) {
+      await conn.execute('ALTER TABLE subdepartments ADD COLUMN room_number VARCHAR(30) NULL AFTER name');
+    }
+
+    subdepartmentSchemaReady = true;
+  } catch (err) {
+    console.error('Subdepartment schema setup failed:', err.message);
   } finally {
     if (conn) conn.release();
   }
@@ -779,6 +822,33 @@ async function ensureQueueTransferSchema() {
        ) ENGINE=InnoDB`
     );
 
+    const transferRequirementIndexes = [
+      {
+        name: 'idx_qsr_subdepartment_status_queued',
+        sql: 'CREATE INDEX idx_qsr_subdepartment_status_queued ON queue_subdepartment_requirements(subdepartment_id, status, queued_at)'
+      },
+      {
+        name: 'idx_qsr_transfer_status_subdepartment',
+        sql: 'CREATE INDEX idx_qsr_transfer_status_subdepartment ON queue_subdepartment_requirements(transfer_id, status, subdepartment_id)'
+      }
+    ];
+
+    for (const index of transferRequirementIndexes) {
+      const [existingIndex] = await conn.execute(
+        `SELECT 1
+         FROM information_schema.statistics
+         WHERE table_schema = DATABASE()
+           AND table_name = 'queue_subdepartment_requirements'
+           AND index_name = ?
+         LIMIT 1`,
+        [index.name]
+      );
+
+      if (!existingIndex) {
+        await conn.execute(index.sql);
+      }
+    }
+
     queueTransferSchemaReady = true;
   } catch (err) {
     console.error('Queue transfer schema setup failed:', err.message);
@@ -886,7 +956,7 @@ async function performQueueTransfer(req, { queue_id, target_department_id, reaso
     }
 
     const [targetDepartment] = await conn.execute(
-      `SELECT department_id, name, code, queue_status, pause_message, paused_until
+      `SELECT department_id, name, code, queue_status
        FROM departments
        WHERE department_id = ?
        FOR UPDATE`,
@@ -904,10 +974,8 @@ async function performQueueTransfer(req, { queue_id, target_department_id, reaso
         status: 400,
         body: {
           success: false,
-          message: targetDepartment.pause_message || 'Target department is not accepting new queues.',
-          department_status: targetDepartment.queue_status,
-          pause_message: targetDepartment.pause_message,
-          paused_until: targetDepartment.paused_until
+          message: 'Target department is not accepting new queues.',
+          department_status: targetDepartment.queue_status
         }
       };
     }
@@ -1037,7 +1105,7 @@ async function getCounterForAccess(conn, req, counterId) {
 
 async function getSubdepartmentForAccess(conn, req, subdepartmentId) {
   const [subdepartment] = await conn.execute(
-    `SELECT sd.subdepartment_id, sd.department_id, sd.name, sd.status, sd.current_queue_id,
+    `SELECT sd.subdepartment_id, sd.department_id, sd.name, sd.room_number, sd.status, sd.current_queue_id,
             d.name AS department_name, d.code AS department_code
      FROM subdepartments sd
      JOIN departments d ON d.department_id = sd.department_id
@@ -1177,6 +1245,150 @@ async function skipUnavailablePendingSubdepartmentRequirements(conn, transferId)
   );
 }
 
+async function queueSubdepartmentRequirement(conn, requirement, actorUserId = null, source = 'assignment') {
+  if (!requirement || !requirement.requirement_id) return null;
+
+  const queuedRequirements = await conn.execute(
+    `SELECT requirement_id, subdepartment_id
+     FROM queue_subdepartment_requirements
+     WHERE transfer_id = ?
+       AND status = 'queued'
+     FOR UPDATE`,
+    [requirement.transfer_id]
+  );
+
+  const queuedElsewhere = queuedRequirements.filter(row => Number(row.requirement_id) !== Number(requirement.requirement_id));
+  if (queuedElsewhere.length) {
+    await conn.execute(
+      `UPDATE queue_subdepartment_requirements
+       SET status = 'pending',
+           queued_at = NULL
+       WHERE transfer_id = ?
+         AND status = 'queued'
+         AND requirement_id <> ?`,
+      [requirement.transfer_id, requirement.requirement_id]
+    );
+  }
+
+  await conn.execute(
+    `UPDATE queue_subdepartment_requirements
+     SET status = 'queued',
+         queued_at = COALESCE(queued_at, NOW())
+     WHERE requirement_id = ?
+       AND status IN ('pending', 'queued')`,
+    [requirement.requirement_id]
+  );
+
+  await logQueueAction(conn, {
+    queue_id: requirement.queue_id,
+    actor_user_id: actorUserId,
+    department_id: requirement.department_id,
+    action: queuedElsewhere.length ? 'transfer_subdepartment_rerouted' : 'transfer_subdepartment_queued',
+    details: {
+      transfer_id: requirement.transfer_id,
+      requirement_id: requirement.requirement_id,
+      subdepartment_id: requirement.subdepartment_id,
+      previous_subdepartment_ids: queuedElsewhere.map(row => row.subdepartment_id),
+      active_count_before_queue: Number(requirement.active_count || 0),
+      source
+    }
+  });
+
+  return {
+    requirement_id: requirement.requirement_id,
+    transfer_id: requirement.transfer_id,
+    queue_id: requirement.queue_id,
+    code: requirement.code,
+    full_name: requirement.full_name,
+    department_id: requirement.department_id,
+    subdepartment_id: requirement.subdepartment_id,
+    subdepartment_name: requirement.subdepartment_name,
+    subdepartment_room_number: requirement.subdepartment_room_number,
+    subdepartment_destination: formatSubdepartmentDestination(requirement.subdepartment_name, requirement.subdepartment_room_number),
+    status: 'waiting'
+  };
+}
+
+async function rebalanceSubdepartmentQueues(conn, parentDepartmentId, actorUserId = null) {
+  const departmentId = Number(parentDepartmentId);
+  if (!departmentId) return [];
+
+  const subdepartments = await conn.execute(
+    `SELECT subdepartment_id, department_id, name, room_number, current_queue_id
+     FROM subdepartments
+     WHERE department_id = ?
+       AND status = 'open'
+       AND deleted_at IS NULL
+     ORDER BY subdepartment_id ASC
+     FOR UPDATE`,
+    [departmentId]
+  );
+
+  const assignments = [];
+
+  for (const subdepartment of subdepartments) {
+    const activeRows = await conn.execute(
+      `SELECT r.requirement_id
+       FROM queue_subdepartment_requirements r
+       JOIN queue_transfers qt ON qt.transfer_id = r.transfer_id
+       WHERE r.subdepartment_id = ?
+         AND qt.status = 'in_subdepartment'
+         AND r.status IN ('queued', 'serving')
+       LIMIT 1
+       FOR UPDATE`,
+      [subdepartment.subdepartment_id]
+    );
+
+    if (activeRows.length) continue;
+
+    const [candidate] = await conn.execute(
+      `SELECT r.requirement_id,
+              r.transfer_id,
+              r.subdepartment_id,
+              q.queue_id,
+              q.department_id,
+              q.full_name,
+              ${queueCodeSql('d', 'v')} AS code,
+              sd.name AS subdepartment_name,
+              sd.room_number AS subdepartment_room_number,
+              0 AS active_count
+       FROM queue_subdepartment_requirements r
+       JOIN queue_transfers qt ON qt.transfer_id = r.transfer_id
+       JOIN queues q ON q.queue_id = qt.queue_id
+       JOIN departments d ON d.department_id = q.department_id
+       JOIN visits v ON v.visit_id = q.visit_id
+       JOIN subdepartments sd ON sd.subdepartment_id = r.subdepartment_id
+       WHERE r.subdepartment_id = ?
+         AND r.status = 'pending'
+         AND qt.status = 'in_subdepartment'
+         AND qt.to_department_id = ?
+         AND q.department_id = ?
+         AND sd.status = 'open'
+         AND sd.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1
+           FROM queue_subdepartment_requirements serving_r
+           WHERE serving_r.transfer_id = r.transfer_id
+             AND serving_r.status = 'serving'
+         )
+       ORDER BY q.is_emergency DESC,
+                q.is_priority DESC,
+                COALESCE(r.queued_at, q.created_at) ASC,
+                q.queue_id ASC
+       LIMIT 1
+       FOR UPDATE`,
+      [subdepartment.subdepartment_id, departmentId, departmentId]
+    );
+
+    if (!candidate) continue;
+
+    const assigned = await queueSubdepartmentRequirement(conn, candidate, actorUserId, 'rebalance');
+    if (assigned) assignments.push(assigned);
+  }
+
+  return assignments;
+}
+
 async function finishTransferItemForQueue(conn, queueId, status, actorUserId = null, subdepartmentId = null) {
   const terminalStatus = status === 'skipped' ? 'skipped' : 'done';
   const queue = await getQueueForTransfer(conn, queueId, true);
@@ -1230,8 +1442,14 @@ async function finishTransferItemForQueue(conn, queueId, status, actorUserId = n
 
   const [nextRequirement] = await conn.execute(
     `SELECT r.requirement_id,
+            r.transfer_id,
             r.subdepartment_id,
+            q.queue_id,
+            q.department_id,
+            q.full_name,
+            ${queueCodeSql('d', 'v')} AS code,
             sd.name AS subdepartment_name,
+            sd.room_number AS subdepartment_room_number,
             (
               SELECT COUNT(*)
               FROM queue_subdepartment_requirements active_r
@@ -1239,6 +1457,10 @@ async function finishTransferItemForQueue(conn, queueId, status, actorUserId = n
                 AND active_r.status IN ('queued', 'serving')
             ) AS active_count
      FROM queue_subdepartment_requirements r
+     JOIN queue_transfers qt ON qt.transfer_id = r.transfer_id
+     JOIN queues q ON q.queue_id = qt.queue_id
+     JOIN departments d ON d.department_id = q.department_id
+     JOIN visits v ON v.visit_id = q.visit_id
      JOIN subdepartments sd ON sd.subdepartment_id = r.subdepartment_id
      WHERE r.transfer_id = ?
        AND r.status = 'pending'
@@ -1276,36 +1498,7 @@ async function finishTransferItemForQueue(conn, queueId, status, actorUserId = n
     return null;
   }
 
-  await conn.execute(
-    `UPDATE queue_subdepartment_requirements
-     SET status = 'queued',
-         queued_at = NOW()
-     WHERE requirement_id = ?`,
-    [nextRequirement.requirement_id]
-  );
-
-  await logQueueAction(conn, {
-    queue_id: queueId,
-    actor_user_id: actorUserId,
-    department_id: queue.department_id,
-    action: 'transfer_subdepartment_queued',
-    details: {
-      transfer_id: transfer.transfer_id,
-      requirement_id: nextRequirement.requirement_id,
-      subdepartment_id: nextRequirement.subdepartment_id,
-      active_count_before_queue: Number(nextRequirement.active_count || 0)
-    }
-  });
-
-  return {
-    queue_id: queueId,
-    code: queue.code,
-    full_name: queue.full_name,
-    department_id: queue.department_id,
-    subdepartment_id: nextRequirement.subdepartment_id,
-    subdepartment_name: nextRequirement.subdepartment_name,
-    status: 'waiting'
-  };
+  return queueSubdepartmentRequirement(conn, nextRequirement, actorUserId, 'finish_transfer_item');
 }
 
 async function assignNextPendingSubdepartment(conn, transferId, actorUserId = null) {
@@ -1327,10 +1520,65 @@ async function assignNextPendingSubdepartment(conn, transferId, actorUserId = nu
     return null;
   }
 
+  const [activeRequirement] = await conn.execute(
+    `SELECT r.requirement_id,
+            r.transfer_id,
+            r.subdepartment_id,
+            r.status,
+            qt.queue_id,
+            qt.to_department_id AS department_id,
+            q.full_name,
+            ${queueCodeSql('d', 'v')} AS code,
+            sd.name AS subdepartment_name,
+            sd.room_number AS subdepartment_room_number
+     FROM queue_subdepartment_requirements r
+     JOIN queue_transfers qt ON qt.transfer_id = r.transfer_id
+     JOIN queues q ON q.queue_id = qt.queue_id
+     JOIN departments d ON d.department_id = q.department_id
+     JOIN visits v ON v.visit_id = q.visit_id
+     JOIN subdepartments sd ON sd.subdepartment_id = r.subdepartment_id
+     WHERE r.transfer_id = ?
+       AND r.status IN ('queued', 'serving')
+     ORDER BY (r.status = 'serving') DESC, r.requirement_id ASC
+     LIMIT 1
+     FOR UPDATE`,
+    [transferId]
+  );
+
+  if (activeRequirement) {
+    await conn.execute(
+      `UPDATE queue_subdepartment_requirements
+       SET status = 'pending',
+           queued_at = NULL
+       WHERE transfer_id = ?
+         AND status = 'queued'
+         AND requirement_id <> ?`,
+      [transferId, activeRequirement.requirement_id]
+    );
+
+    return {
+      queue_id: activeRequirement.queue_id,
+      code: activeRequirement.code,
+      full_name: activeRequirement.full_name,
+      department_id: activeRequirement.department_id,
+      subdepartment_id: activeRequirement.subdepartment_id,
+      subdepartment_name: activeRequirement.subdepartment_name,
+      subdepartment_room_number: activeRequirement.subdepartment_room_number,
+      subdepartment_destination: formatSubdepartmentDestination(activeRequirement.subdepartment_name, activeRequirement.subdepartment_room_number),
+      status: activeRequirement.status === 'serving' ? 'serving' : 'waiting'
+    };
+  }
+
   const [nextRequirement] = await conn.execute(
     `SELECT r.requirement_id,
+            r.transfer_id,
             r.subdepartment_id,
+            qt.queue_id,
+            qt.to_department_id AS department_id,
+            q.full_name,
+            ${queueCodeSql('d', 'v')} AS code,
             sd.name AS subdepartment_name,
+            sd.room_number AS subdepartment_room_number,
             (
               SELECT COUNT(*)
               FROM queue_subdepartment_requirements active_r
@@ -1338,6 +1586,10 @@ async function assignNextPendingSubdepartment(conn, transferId, actorUserId = nu
                 AND active_r.status IN ('queued', 'serving')
             ) AS active_count
      FROM queue_subdepartment_requirements r
+     JOIN queue_transfers qt ON qt.transfer_id = r.transfer_id
+     JOIN queues q ON q.queue_id = qt.queue_id
+     JOIN departments d ON d.department_id = q.department_id
+     JOIN visits v ON v.visit_id = q.visit_id
      JOIN subdepartments sd ON sd.subdepartment_id = r.subdepartment_id
      WHERE r.transfer_id = ?
        AND r.status = 'pending'
@@ -1364,36 +1616,7 @@ async function assignNextPendingSubdepartment(conn, transferId, actorUserId = nu
     return null;
   }
 
-  await conn.execute(
-    `UPDATE queue_subdepartment_requirements
-     SET status = 'queued',
-         queued_at = NOW()
-     WHERE requirement_id = ?`,
-    [nextRequirement.requirement_id]
-  );
-
-  await logQueueAction(conn, {
-    queue_id: transfer.queue_id,
-    actor_user_id: actorUserId,
-    department_id: transfer.to_department_id,
-    action: 'transfer_subdepartment_queued',
-    details: {
-      transfer_id: transferId,
-      requirement_id: nextRequirement.requirement_id,
-      subdepartment_id: nextRequirement.subdepartment_id,
-      active_count_before_queue: Number(nextRequirement.active_count || 0)
-    }
-  });
-
-  return {
-    queue_id: transfer.queue_id,
-    code: transfer.code,
-    full_name: transfer.full_name,
-    department_id: transfer.to_department_id,
-    subdepartment_id: nextRequirement.subdepartment_id,
-    subdepartment_name: nextRequirement.subdepartment_name,
-    status: 'waiting'
-  };
+  return queueSubdepartmentRequirement(conn, nextRequirement, actorUserId, 'assign_next_pending');
 }
 
 async function activateTransferOnDepartmentCall(conn, queueId, actorUserId = null) {
@@ -1480,7 +1703,7 @@ async function performSubdepartmentTransfer(req, { queue_id, target_department_i
     }
 
     const [targetDepartment] = await conn.execute(
-      `SELECT department_id, name, code, queue_status, pause_message, paused_until
+      `SELECT department_id, name, code, queue_status
        FROM departments
        WHERE department_id = ?
        FOR UPDATE`,
@@ -1498,7 +1721,7 @@ async function performSubdepartmentTransfer(req, { queue_id, target_department_i
         status: 400,
         body: {
           success: false,
-          message: targetDepartment.pause_message || 'Target department is not accepting new queues.'
+          message: 'Target department is not accepting new queues.'
         }
       };
     }
@@ -1614,6 +1837,7 @@ async function performSubdepartmentTransfer(req, { queue_id, target_department_i
       newQueue.status = 'done';
 
       assignedSubdepartmentQueue = await assignNextPendingSubdepartment(conn, transferId, req.session.uid);
+      await rebalanceSubdepartmentQueues(conn, targetDepartmentId, req.session.uid);
     }
 
     await logQueueAction(conn, {
@@ -1657,6 +1881,7 @@ async function performSubdepartmentTransfer(req, { queue_id, target_department_i
 ensureQueueTransferSchema();
 ensureAuthSchema();
 ensureDemographicSchema();
+ensureSubdepartmentSchema();
 
 const AI_HISTORY_ALLOWED_STATUSES = ['waiting', 'serving', 'done', 'cancelled', 'no_show', 'void'];
 const AI_HISTORY_DEFAULT_STATUSES = ['done', 'cancelled', 'no_show', 'void'];
@@ -2235,6 +2460,129 @@ async function classifyVisitConcern({ concern, availableDepartments }) {
   }
 }
 
+function normalizeDoctorTransferSuggestion(raw, { departments = [], subdepartments = [] } = {}) {
+  const suggestion = raw && typeof raw === 'object' ? raw : {};
+  const departmentById = new Map(departments.map(dept => [Number(dept.department_id), dept]));
+  const departmentByName = new Map(departments.map(dept => [String(dept.name || '').trim().toLowerCase(), dept]));
+  const subdepartmentById = new Map(subdepartments.map(sd => [Number(sd.subdepartment_id), sd]));
+  const subdepartmentByName = new Map(subdepartments.map(sd => [String(sd.name || '').trim().toLowerCase(), sd]));
+
+  let department = null;
+  const suggestedDepartmentId = Number(suggestion.target_department_id);
+  if (departmentById.has(suggestedDepartmentId)) {
+    department = departmentById.get(suggestedDepartmentId);
+  } else if (typeof suggestion.target_department_name === 'string') {
+    department = departmentByName.get(suggestion.target_department_name.trim().toLowerCase()) || null;
+  }
+
+  const rawSubdepartmentValues = Array.isArray(suggestion.subdepartment_ids)
+    ? suggestion.subdepartment_ids
+    : Array.isArray(suggestion.subdepartments)
+      ? suggestion.subdepartments
+      : [];
+
+  const subdepartmentIds = [];
+  for (const value of rawSubdepartmentValues) {
+    const numericId = Number(value);
+    let subdepartment = subdepartmentById.get(numericId) || null;
+    if (!subdepartment && typeof value === 'string') {
+      subdepartment = subdepartmentByName.get(value.trim().toLowerCase()) || null;
+    }
+    if (
+      subdepartment &&
+      department &&
+      Number(subdepartment.department_id) === Number(department.department_id) &&
+      !subdepartmentIds.includes(Number(subdepartment.subdepartment_id))
+    ) {
+      subdepartmentIds.push(Number(subdepartment.subdepartment_id));
+    }
+  }
+
+  const reason = typeof suggestion.reason === 'string'
+    ? suggestion.reason.trim().replace(/\s+/g, ' ').slice(0, 500)
+    : '';
+
+  return {
+    target_department_id: department ? Number(department.department_id) : null,
+    target_department_name: department ? department.name : null,
+    subdepartment_ids: subdepartmentIds,
+    subdepartments: subdepartmentIds
+      .map(id => subdepartmentById.get(id))
+      .filter(Boolean)
+      .map(sd => ({
+        subdepartment_id: Number(sd.subdepartment_id),
+        name: sd.name,
+        room_number: sd.room_number || null
+      })),
+    reason
+  };
+}
+
+async function suggestDoctorTransfer({ patientNote, checklist, doctorNote, departments, subdepartments }) {
+  if (!groq) return null;
+
+  const availableDepartments = (departments || []).map(dept => ({
+    department_id: Number(dept.department_id),
+    name: dept.name
+  }));
+  const availableSubdepartments = (subdepartments || []).map(sd => ({
+    subdepartment_id: Number(sd.subdepartment_id),
+    department_id: Number(sd.department_id),
+    name: sd.name,
+    room_number: sd.room_number || null
+  }));
+
+  if (!availableDepartments.length) return null;
+
+  try {
+    console.info('Calling Groq for doctor transfer suggestion');
+    const completion = await groq.chat.completions.create({
+      model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You assist clinic queue routing after a normal check-up checklist.',
+            'Return JSON only.',
+            'Do not diagnose.',
+            'Do not recommend treatment or medication.',
+            'Only suggest a transfer destination from the allowed departments and subdepartments.',
+            'If there is not enough information, use null for target_department_id and an empty subdepartment_ids array.',
+            'Keep the reason short and phrase it as a referral/routing suggestion.'
+          ].join('\n')
+        },
+        {
+          role: 'user',
+          content: [
+            'Return exactly this JSON shape:',
+            '{',
+            '  "target_department_id": null,',
+            '  "target_department_name": null,',
+            '  "subdepartment_ids": [],',
+            '  "reason": ""',
+            '}',
+            `Allowed departments: ${JSON.stringify(availableDepartments)}`,
+            `Allowed subdepartments: ${JSON.stringify(availableSubdepartments)}`,
+            `Patient submitted note: ${String(patientNote || '').trim() || 'None'}`,
+            `Checklist: ${JSON.stringify(checklist || {})}`,
+            `Doctor additional note: ${String(doctorNote || '').trim() || 'None'}`
+          ].join('\n')
+        }
+      ]
+    });
+
+    return normalizeDoctorTransferSuggestion(parseGroqJson(completion.choices?.[0]?.message?.content), {
+      departments,
+      subdepartments
+    });
+  } catch (err) {
+    console.error('Groq doctor transfer suggestion failed:', err.message);
+    return null;
+  }
+}
+
 async function getDepartmentNames(conn) {
   const departmentRows = await conn.execute(
     `SELECT name
@@ -2262,7 +2610,8 @@ app.post('/api/queue', async (req, res) => {
 
   const uid = req.session.uid;
   if (!uid) return res.status(401).json({ error: 'Not logged in' });
-  const enforceUserActiveQueue = !['owner', 'admin', 'staff', 'doctor'].includes(req.session.role);
+  const createsWalkInQueue = ['owner', 'admin', 'staff', 'doctor'].includes(req.session.role);
+  const enforceUserActiveQueue = !createsWalkInQueue;
   const { categCheck } = req.body;
   let categoryComplete = {
     A: 'Aisthecategory',
@@ -2296,7 +2645,7 @@ app.post('/api/queue', async (req, res) => {
     }
 
     const [department] = await conn.execute(
-      `SELECT department_id, code, queue_status, pause_message, paused_until
+      `SELECT department_id, code, queue_status
 	       FROM departments
 	       WHERE name = ?
 	       FOR UPDATE`,
@@ -2343,15 +2692,15 @@ app.post('/api/queue', async (req, res) => {
       await conn.rollback();
       return res.status(403).json({
         success: false,
-        message: department.pause_message || 'Queue is currently closed.',
-        error: department.pause_message || 'Queue is currently closed.',
-        department_status: department.queue_status,
-        pause_message: department.pause_message,
-        paused_until: department.paused_until
+        message: 'Queue is currently closed.',
+        error: 'Queue is currently closed.',
+        department_status: department.queue_status
       });
     }
 
-    const visit = await getOrCreateActiveVisit(conn, uid);
+    const visit = createsWalkInQueue
+      ? await createVisit(conn, uid)
+      : await getOrCreateActiveVisit(conn, uid);
     const code = formatQueueCode(department.code, visit.global_number);
 
     const dbres = await insertQueue(conn, {
@@ -2392,7 +2741,10 @@ app.post('/api/queue', async (req, res) => {
 });
 
 app.post('/api/owner/admins', reqLogin, reqOwner, async (req, res) => {
-  const { fullName, contact, username, password } = req.body;
+  const fullName = String(req.body.fullName || '').trim();
+  const contact = String(req.body.contact || '').trim();
+  const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '');
 
   if (!fullName || !username || !password) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -2402,6 +2754,18 @@ app.post('/api/owner/admins', reqLogin, reqOwner, async (req, res) => {
 
   try {
     conn = await pool.getConnection();
+
+    const [existingUser] = await conn.execute(
+      `SELECT user_id
+       FROM users
+       WHERE username = ?
+       LIMIT 1`,
+      [username]
+    );
+
+    if (existingUser) {
+      return res.status(409).json({ error: 'Username is already in use' });
+    }
 
     const hashed = await bcrypt.hash(password, 10);
 
@@ -2468,12 +2832,10 @@ app.get('/api/departments/status', reqLogin, async (req, res) => {
 	          d.name,
 	          d.code,
 	          d.queue_status,
-	          d.pause_message,
-	          d.paused_until,
 	          COUNT(CASE WHEN q.status IN ('waiting', 'serving') THEN 1 END) AS active_count
 	       FROM departments d
 	       LEFT JOIN queues q ON q.department_id = d.department_id
-	       GROUP BY d.department_id, d.name, d.code, d.queue_status, d.pause_message, d.paused_until
+	       GROUP BY d.department_id, d.name, d.code, d.queue_status
 	       ORDER BY d.name ASC`
     );
 
@@ -2514,20 +2876,66 @@ app.get('/api/departments/status', reqLogin, async (req, res) => {
   }
 });
 
+app.get('/api/departments/:department_id/subdepartments', reqLogin, async (req, res) => {
+  const departmentId = Number(req.params.department_id);
+
+  if (!departmentId) {
+    return res.status(400).json({ success: false, error: 'Valid department_id is required' });
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const [department] = await conn.execute(
+      `SELECT department_id, name
+       FROM departments
+       WHERE department_id = ?`,
+      [departmentId]
+    );
+
+    if (!department) {
+      return res.status(404).json({ success: false, error: 'Department not found' });
+    }
+
+    const subdepartments = await conn.execute(
+      `SELECT subdepartment_id, department_id, name, room_number, status
+       FROM subdepartments
+       WHERE department_id = ?
+         AND deleted_at IS NULL
+       ORDER BY name ASC, subdepartment_id ASC`,
+      [departmentId]
+    );
+
+    return res.json({
+      success: true,
+      department_id: departmentId,
+      department,
+      subdepartments
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 app.patch('/api/admin/departments/:department_id/queue-status', reqLogin, reqStaffOrAdmin, async (req, res) => {
   const { department_id } = req.params;
-  const { queueOpen, queue_status, pause_message, paused_until } = req.body;
+  const { queueOpen, queue_status } = req.body;
 
   if (!canAccessDepartment(req, department_id)) {
     return res.status(403).json({ error: 'You cannot update this department' });
   }
 
-  const allowedStatuses = ['open', 'pause', 'closed'];
-  const queueStatus = allowedStatuses.includes(queue_status)
-    ? queue_status
-    : (queueOpen ? 'open' : 'closed');
-  const pauseMessage = queueStatus === 'pause' ? (pause_message || null) : null;
-  const pausedUntil = queueStatus === 'pause' && paused_until ? paused_until : null;
+  const normalizedStatus = queue_status ? String(queue_status).trim().toLowerCase() : '';
+  if (normalizedStatus && !['open', 'closed'].includes(normalizedStatus)) {
+    return res.status(400).json({ error: 'Department status must be open or closed' });
+  }
+
+  const queueStatus = normalizedStatus || (queueOpen === false ? 'closed' : 'open');
 
   let conn;
 
@@ -2537,11 +2945,9 @@ app.patch('/api/admin/departments/:department_id/queue-status', reqLogin, reqSta
 
     const result = await conn.execute(
       `UPDATE departments
-	       SET queue_status = ?,
-	           pause_message = ?,
-	           paused_until = ?
+	       SET queue_status = ?
 	       WHERE department_id = ?`,
-      [queueStatus, pauseMessage, pausedUntil, department_id]
+      [queueStatus, department_id]
     );
 
     if (result.affectedRows === 0) {
@@ -2555,9 +2961,7 @@ app.patch('/api/admin/departments/:department_id/queue-status', reqLogin, reqSta
       action: 'status_changed',
       details: {
         scope: 'department_queue_status',
-        queue_status: queueStatus,
-        pause_message: pauseMessage,
-        paused_until: pausedUntil
+        queue_status: queueStatus
       }
     });
 
@@ -2566,9 +2970,7 @@ app.patch('/api/admin/departments/:department_id/queue-status', reqLogin, reqSta
     return res.json({
       success: true,
       department_id: Number(department_id),
-      queue_status: queueStatus,
-      pause_message: pauseMessage,
-      paused_until: pausedUntil
+      queue_status: queueStatus
     });
   } catch (err) {
     if (conn) await conn.rollback();
@@ -2580,7 +2982,11 @@ app.patch('/api/admin/departments/:department_id/queue-status', reqLogin, reqSta
 });
 
 app.post('/api/admin/staff', reqLogin, reqAdmin, async (req, res) => {
-  const { fullName, contact, username, password, departmentId } = req.body;
+  const fullName = String(req.body.fullName || '').trim();
+  const contact = String(req.body.contact || '').trim();
+  const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '');
+  const departmentId = req.body.departmentId;
   const role = ['staff', 'doctor'].includes(req.body.role) ? req.body.role : 'staff';
 
   if (!fullName || !username || !password || !departmentId) {
@@ -2591,6 +2997,18 @@ app.post('/api/admin/staff', reqLogin, reqAdmin, async (req, res) => {
 
   try {
     conn = await pool.getConnection();
+
+    const [existingUser] = await conn.execute(
+      `SELECT user_id
+       FROM users
+       WHERE username = ?
+       LIMIT 1`,
+      [username]
+    );
+
+    if (existingUser) {
+      return res.status(409).json({ error: 'Username is already in use' });
+    }
 
     const [department] = await conn.execute(
       `SELECT department_id FROM departments WHERE department_id = ?`,
@@ -2625,13 +3043,12 @@ app.patch('/api/admin/staff/:user_id', reqLogin, reqAdmin, async (req, res) => {
   const { user_id } = req.params;
   const fullName = String(req.body.fullName || '').trim();
   const contact = String(req.body.contact || '').trim();
-  const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
   const role = String(req.body.role || '').trim();
   const departmentId = req.body.departmentId || null;
 
-  if (!fullName || !username || !role) {
-    return res.status(400).json({ error: 'Name, username, and role are required' });
+  if (!fullName || !role) {
+    return res.status(400).json({ error: 'Name and role are required' });
   }
 
   if (!['admin', 'staff', 'doctor'].includes(role)) {
@@ -2694,14 +3111,12 @@ app.patch('/api/admin/staff/:user_id', reqLogin, reqAdmin, async (req, res) => {
     const fields = [
       'full_name = ?',
       'contact_number = ?',
-      'username = ?',
       'role = ?',
       'department_id = ?'
     ];
     const values = [
       fullName,
       contact || null,
-      username,
       role,
       ['staff', 'doctor'].includes(role) ? departmentId : (departmentId || null)
     ];
@@ -2908,10 +3323,17 @@ app.get('/auth/google/callback', (req, res, next) => {
 
 app.post('/api/signup', async (req, res) => {
   console.log(req.body);
-  const { fullName, contact, username, finalPassword } = req.body;
+  const fullName = String(req.body.fullName || '').trim();
+  const contact = String(req.body.contact || '').trim();
+  const username = String(req.body.username || '').trim();
+  const finalPassword = String(req.body.finalPassword || '');
   const age = normalizeAge(req.body.age);
   const gender = normalizeGender(req.body.gender);
   const email = normalizeEmail(req.body.email);
+
+  if (!fullName || !username || !finalPassword) {
+    return res.status(400).json({ error: 'Full name, username, and password are required' });
+  }
 
   if (age === null || !gender) {
     return res.status(400).json({ error: 'Valid age and gender are required' });
@@ -2923,6 +3345,19 @@ app.post('/api/signup', async (req, res) => {
   try {
     conn = await pool.getConnection();
     await ensureAuthSchema();
+
+    const [existingUser] = await conn.execute(
+      `SELECT user_id
+       FROM users
+       WHERE username = ?
+       LIMIT 1`,
+      [username]
+    );
+
+    if (existingUser) {
+      return res.status(409).json({ error: 'Username is already in use' });
+    }
+
     await conn.execute(
       `INSERT INTO users
        (username, contact_number, email, password_hash, full_name, age, gender, auth_provider)
@@ -2932,6 +3367,9 @@ app.post('/api/signup', async (req, res) => {
     res.json({ "success": true });
   }
   catch (err) {
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Username is already in use' });
+    }
     res.status(500).json({ error: err.message });
   }
   finally {
@@ -3038,6 +3476,122 @@ app.get('/api/queue/status', reqLogin, async (req, res) => {
   try {
     conn = await pool.getConnection();
 
+    const [subdepartmentRow] = await conn.execute(
+      `SELECT
+          q.queue_id,
+          r.requirement_id,
+          r.transfer_id,
+          ${queueCodeSql('d', 'v')} AS code,
+          q.full_name,
+          q.department_id,
+          CASE WHEN r.status = 'serving' THEN 'serving' ELSE 'waiting' END AS status,
+          q.is_priority,
+          q.is_emergency,
+          q.referred_from_queue_id,
+          rd.name AS referred_from_department_name,
+          q.ai_suggested_department,
+          q.ai_category,
+          q.ai_priority_level,
+          q.ai_reason,
+          d.name AS department_name,
+          d.queue_status AS department_queue_status,
+          r.subdepartment_id,
+          sd.name AS subdepartment_name,
+          sd.room_number AS subdepartment_room_number,
+          CASE
+            WHEN sd.room_number IS NOT NULL AND sd.room_number <> ''
+              THEN CONCAT(sd.name, ', Room ', sd.room_number)
+            ELSE sd.name
+          END AS subdepartment_destination,
+          (
+            SELECT MAX(l.log_id)
+            FROM queue_logs l
+            WHERE l.queue_id = q.queue_id
+              AND l.action IN ('transfer_subdepartment_queued', 'transfer_subdepartment_rerouted', 'subdepartment_called_next', 'recalled')
+          ) AS routing_event_id,
+          (
+            SELECT COUNT(*)
+            FROM queue_subdepartment_requirements r2
+            JOIN queue_transfers qt2 ON qt2.transfer_id = r2.transfer_id
+            JOIN queues q2 ON q2.queue_id = qt2.queue_id
+            WHERE r2.subdepartment_id = r.subdepartment_id
+              AND r2.status = 'queued'
+              AND qt2.status = 'in_subdepartment'
+              AND r.status = 'queued'
+              AND (
+                COALESCE(q2.is_emergency, 0) > COALESCE(q.is_emergency, 0)
+                OR (
+                  COALESCE(q2.is_emergency, 0) = COALESCE(q.is_emergency, 0)
+                  AND COALESCE(q2.is_priority, 0) > COALESCE(q.is_priority, 0)
+                )
+                OR (
+                  COALESCE(q2.is_emergency, 0) = COALESCE(q.is_emergency, 0)
+                  AND COALESCE(q2.is_priority, 0) = COALESCE(q.is_priority, 0)
+                  AND (
+                    COALESCE(r2.queued_at, q2.created_at) < COALESCE(r.queued_at, q.created_at)
+                    OR (COALESCE(r2.queued_at, q2.created_at) = COALESCE(r.queued_at, q.created_at) AND q2.queue_id < q.queue_id)
+                  )
+                )
+              )
+          ) AS ahead
+       FROM queue_subdepartment_requirements r
+       JOIN queue_transfers qt ON qt.transfer_id = r.transfer_id
+       JOIN queues q ON q.queue_id = qt.queue_id
+       JOIN departments d ON d.department_id = q.department_id
+       JOIN visits v ON v.visit_id = q.visit_id
+       JOIN subdepartments sd ON sd.subdepartment_id = r.subdepartment_id
+       LEFT JOIN queues rq ON rq.queue_id = q.referred_from_queue_id
+       LEFT JOIN departments rd ON rd.department_id = rq.department_id
+       WHERE q.user_id = ?
+         AND qt.status = 'in_subdepartment'
+         AND r.status IN ('queued', 'serving')
+       ORDER BY (r.status = 'serving') DESC,
+                COALESCE(r.queued_at, q.created_at) DESC,
+                q.queue_id DESC
+       LIMIT 1`,
+      [uid]
+    );
+
+    if (subdepartmentRow) {
+      const queueStatus = subdepartmentRow.department_queue_status || 'open';
+      const ahead = subdepartmentRow.status === 'waiting' ? Number(subdepartmentRow.ahead || 0) : 0;
+
+      return res.json({
+        success: true,
+        queued: true,
+        queue_open: queueStatus === 'open',
+        queue_status: queueStatus,
+        queue_id: subdepartmentRow.queue_id,
+        requirement_id: subdepartmentRow.requirement_id,
+        transfer_id: subdepartmentRow.transfer_id,
+        code: subdepartmentRow.code,
+        full_name: subdepartmentRow.full_name,
+        status: subdepartmentRow.status,
+        department_id: subdepartmentRow.department_id,
+        department_name: subdepartmentRow.department_name,
+        subdepartment_id: subdepartmentRow.subdepartment_id,
+        subdepartment_name: subdepartmentRow.subdepartment_name,
+        subdepartment_room_number: subdepartmentRow.subdepartment_room_number,
+        subdepartment_destination: subdepartmentRow.subdepartment_destination,
+        routing_event_id: subdepartmentRow.routing_event_id,
+        referred_from_queue_id: subdepartmentRow.referred_from_queue_id,
+        referred_from_department_name: subdepartmentRow.referred_from_department_name,
+        referral_message: subdepartmentRow.referred_from_queue_id
+          ? `You have been referred to ${subdepartmentRow.department_name}.`
+          : null,
+        ahead,
+        position: subdepartmentRow.status === 'waiting' ? ahead + 1 : null,
+        ai: subdepartmentRow.ai_suggested_department || subdepartmentRow.ai_category || subdepartmentRow.ai_priority_level || subdepartmentRow.ai_reason
+          ? {
+            suggested_department: subdepartmentRow.ai_suggested_department || null,
+            category: subdepartmentRow.ai_category || 'general',
+            priority_level: subdepartmentRow.ai_priority_level || 'normal',
+            reason: subdepartmentRow.ai_reason || ''
+          }
+          : null
+      });
+    }
+
     const [row] = await conn.execute(
       `SELECT
           q.queue_id,
@@ -3125,7 +3679,6 @@ app.get('/api/queue/status', reqLogin, async (req, res) => {
       `SELECT
           CASE
             WHEN SUM(queue_status = 'open') > 0 THEN 'open'
-            WHEN SUM(queue_status = 'pause') > 0 THEN 'pause'
             ELSE 'closed'
           END AS queue_status
        FROM departments`
@@ -3181,19 +3734,30 @@ app.patch('/api/queue/cancel', reqLogin, async (req, res) => {
               q.visit_id,
               ${queueCodeSql('d', 'v')} AS code,
               q.status,
-              q.department_id
+              q.department_id,
+              qt.transfer_id,
+              active_r.status AS active_requirement_status
        FROM queues q
        JOIN departments d ON d.department_id = q.department_id
        JOIN visits v ON v.visit_id = q.visit_id
+       LEFT JOIN queue_transfers qt ON qt.queue_id = q.queue_id
+        AND qt.status = 'in_subdepartment'
+       LEFT JOIN queue_subdepartment_requirements active_r ON active_r.transfer_id = qt.transfer_id
+        AND active_r.status IN ('queued', 'serving')
        WHERE q.user_id = ?
-         AND q.status IN ('waiting', 'serving')
+         AND (
+           q.status IN ('waiting', 'serving')
+           OR active_r.requirement_id IS NOT NULL
+         )
        ORDER BY q.created_at DESC, q.queue_id DESC
        LIMIT 1
        FOR UPDATE`,
       [uid]
     );
 
-    if (!queue || queue.status !== 'waiting') {
+    const cancellable = queue && (queue.status === 'waiting' || queue.active_requirement_status === 'queued');
+
+    if (!cancellable) {
       await conn.rollback();
       return res.status(409).json({
         success: false,
@@ -3207,9 +3771,28 @@ app.patch('/api/queue/cancel', reqLogin, async (req, res) => {
        SET status = 'cancelled',
            finished_at = COALESCE(finished_at, NOW())
        WHERE queue_id = ?
-         AND status = 'waiting'`,
+         AND status IN ('waiting', 'done')`,
       [queue.queue_id]
     );
+
+    if (queue.transfer_id) {
+      await conn.execute(
+        `UPDATE queue_subdepartment_requirements
+         SET status = 'skipped',
+             finished_at = COALESCE(finished_at, NOW())
+         WHERE transfer_id = ?
+           AND status IN ('pending', 'queued')`,
+        [queue.transfer_id]
+      );
+
+      await conn.execute(
+        `UPDATE queue_transfers
+         SET status = 'cancelled',
+             completed_at = COALESCE(completed_at, NOW())
+         WHERE transfer_id = ?`,
+        [queue.transfer_id]
+      );
+    }
 
     await logQueueAction(conn, {
       queue_id: queue.queue_id,
@@ -3338,7 +3921,6 @@ app.get('/api/admin/dashboard/bootstrap', reqLogin, reqStaffOrAdmin, async (req,
 
     const departments = await conn.execute(
       `SELECT d.department_id, d.name, d.code, d.queue_status,
-	              d.pause_message, d.paused_until,
               CASE
                 WHEN EXISTS (
                   SELECT 1
@@ -3386,7 +3968,7 @@ app.get('/api/admin/dashboard/bootstrap', reqLogin, reqStaffOrAdmin, async (req,
     );
 
     const subdepartments = await conn.execute(
-      `SELECT sd.subdepartment_id, sd.department_id, sd.name, sd.status,
+      `SELECT sd.subdepartment_id, sd.department_id, sd.name, sd.room_number, sd.status,
               sd.current_queue_id, ${queueCodeSql('d', 'v')} AS current_queue_code
        FROM subdepartments sd
        LEFT JOIN queues q ON q.queue_id = sd.current_queue_id
@@ -3470,7 +4052,8 @@ app.get('/api/admin/dashboard/department/:department_id', reqLogin, reqStaffOrAd
 	          COALESCE(q.counter_id, c.counter_id) AS counter_id,
 	          COALESCE(assigned_c.name, c.name) AS counter_name,
             COALESCE(q.subdepartment_id, active_req.subdepartment_id) AS subdepartment_id,
-            COALESCE(sd.name, active_sd.name) AS subdepartment_name
+            COALESCE(sd.name, active_sd.name) AS subdepartment_name,
+            COALESCE(sd.room_number, active_sd.room_number) AS subdepartment_room_number
        FROM queues q
        JOIN departments d ON d.department_id = q.department_id
        JOIN visits v ON v.visit_id = q.visit_id
@@ -3791,6 +4374,7 @@ app.get('/api/admin/subdepartments', reqLogin, reqAdmin, async (req, res) => {
           sd.subdepartment_id,
           sd.department_id,
           sd.name,
+          sd.room_number,
           sd.status,
           sd.current_queue_id,
           ${queueCodeSql('qd', 'v')} AS current_queue_code,
@@ -3814,11 +4398,12 @@ app.get('/api/admin/subdepartments', reqLogin, reqAdmin, async (req, res) => {
 
 app.post('/api/admin/subdepartments', reqLogin, reqAdmin, async (req, res) => {
   const name = String(req.body.name || '').trim();
+  const roomNumber = normalizeRoomNumber(req.body.roomNumber ?? req.body.room_number);
   const departmentId = Number(req.body.departmentId || req.body.department_id);
   const status = ['open', 'break', 'closed'].includes(req.body.status) ? req.body.status : 'open';
 
-  if (!name || !departmentId) {
-    return res.status(400).json({ error: 'Subdepartment name and department are required' });
+  if (!name || !roomNumber || !departmentId) {
+    return res.status(400).json({ error: 'Subdepartment name, room number, and department are required' });
   }
 
   let conn;
@@ -3835,10 +4420,24 @@ app.post('/api/admin/subdepartments', reqLogin, reqAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Department not found' });
     }
 
+    const [existingRoom] = await conn.execute(
+      `SELECT subdepartment_id
+       FROM subdepartments
+       WHERE department_id = ?
+         AND room_number = ?
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [departmentId, roomNumber]
+    );
+
+    if (existingRoom) {
+      return res.status(400).json({ error: 'Room number is already assigned in this department' });
+    }
+
     const result = await conn.execute(
-      `INSERT INTO subdepartments (department_id, name, status)
-       VALUES (?, ?, ?)`,
-      [departmentId, name, status]
+      `INSERT INTO subdepartments (department_id, name, room_number, status)
+       VALUES (?, ?, ?, ?)`,
+      [departmentId, name, roomNumber, status]
     );
 
     return res.json({ success: true, subdepartment_id: Number(result.insertId) });
@@ -3852,11 +4451,12 @@ app.post('/api/admin/subdepartments', reqLogin, reqAdmin, async (req, res) => {
 app.patch('/api/admin/subdepartments/:subdepartment_id', reqLogin, reqAdmin, async (req, res) => {
   const subdepartmentId = Number(req.params.subdepartment_id);
   const name = String(req.body.name || '').trim();
+  const roomNumber = normalizeRoomNumber(req.body.roomNumber ?? req.body.room_number);
   const departmentId = Number(req.body.departmentId || req.body.department_id);
   const status = String(req.body.status || '').trim();
 
-  if (!name || !departmentId || !['open', 'break', 'closed'].includes(status)) {
-    return res.status(400).json({ error: 'Subdepartment name, department, and valid status are required' });
+  if (!name || !roomNumber || !departmentId || !['open', 'break', 'closed'].includes(status)) {
+    return res.status(400).json({ error: 'Subdepartment name, room number, department, and valid status are required' });
   }
 
   let conn;
@@ -3873,14 +4473,30 @@ app.patch('/api/admin/subdepartments/:subdepartment_id', reqLogin, reqAdmin, asy
       return res.status(400).json({ error: 'Department not found' });
     }
 
+    const [existingRoom] = await conn.execute(
+      `SELECT subdepartment_id
+       FROM subdepartments
+       WHERE department_id = ?
+         AND room_number = ?
+         AND subdepartment_id <> ?
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [departmentId, roomNumber, subdepartmentId]
+    );
+
+    if (existingRoom) {
+      return res.status(400).json({ error: 'Room number is already assigned in this department' });
+    }
+
     const result = await conn.execute(
       `UPDATE subdepartments
        SET department_id = ?,
            name = ?,
+           room_number = ?,
            status = ?
        WHERE subdepartment_id = ?
          AND deleted_at IS NULL`,
-      [departmentId, name, status, subdepartmentId]
+      [departmentId, name, roomNumber, status, subdepartmentId]
     );
 
     if (!result.affectedRows) {
@@ -4181,6 +4797,7 @@ app.patch('/api/admin/skip/:queue_id', reqLogin, reqStaffOrAdmin, async (req, re
     );
 
     const advancedQueue = await finishTransferItemForQueue(conn, queue.queue_id, 'skipped', req.session.uid);
+    await rebalanceSubdepartmentQueues(conn, queue.department_id, req.session.uid);
 
     await logQueueAction(conn, {
       queue_id,
@@ -4698,17 +5315,26 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
     let responseMessage = 'Queue called. Email notification sent if patient has an email.';
 
     if (activatedTransfer) {
+      const assignedDestination = activatedTransfer.assigned_queue
+        ? activatedTransfer.assigned_queue.subdepartment_destination
+          || formatSubdepartmentDestination(
+            activatedTransfer.assigned_queue.subdepartment_name,
+            activatedTransfer.assigned_queue.subdepartment_room_number
+          )
+        : null;
       responseNext = {
         ...next,
         status: 'done',
         counter_id: null,
         counter_name: null,
         assigned_subdepartment_id: activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_id : null,
-        assigned_subdepartment_name: activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_name : null
+        assigned_subdepartment_name: activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_name : null,
+        assigned_subdepartment_room_number: activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_room_number : null,
+        assigned_subdepartment_destination: assignedDestination
       };
-      notificationCounterName = activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_name : null;
+      notificationCounterName = assignedDestination;
       responseMessage = activatedTransfer.assigned_queue
-        ? `Dispatched ${next.code} to ${activatedTransfer.assigned_queue.subdepartment_name}.`
+        ? `Dispatched ${next.code} to ${assignedDestination}.`
         : `Dispatched ${next.code}. No open subdepartments were available.`;
       await updateVisitStatus(conn, next.visit_id);
     } else {
@@ -4772,7 +5398,9 @@ app.post('/api/admin/next', reqLogin, reqStaffOrAdmin, async (req, res) => {
             assigned_subdepartment: activatedTransfer.assigned_queue
               ? {
                   subdepartment_id: activatedTransfer.assigned_queue.subdepartment_id,
-                  name: activatedTransfer.assigned_queue.subdepartment_name
+                  name: activatedTransfer.assigned_queue.subdepartment_name,
+                  room_number: activatedTransfer.assigned_queue.subdepartment_room_number,
+                  destination: responseNext.assigned_subdepartment_destination
                 }
               : null
           }
@@ -4948,7 +5576,8 @@ app.get('/api/doctor/queue', reqLogin, reqDoctor, async (req, res) => {
               q.counter_id,
               c.name AS counter_name,
               q.subdepartment_id,
-              sd.name AS subdepartment_name
+              sd.name AS subdepartment_name,
+              sd.room_number AS subdepartment_room_number
        FROM queues q
        JOIN departments d ON d.department_id = q.department_id
        JOIN visits v ON v.visit_id = q.visit_id
@@ -4968,6 +5597,104 @@ app.get('/api/doctor/queue', reqLogin, reqDoctor, async (req, res) => {
     return res.json({ success: true, queues });
   } catch (err) {
     return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.post('/api/doctor/transfer-suggest', reqLogin, reqDoctor, async (req, res) => {
+  const departmentId = Number(req.session.department_id);
+  const queueId = Number(req.body.queue_id);
+  const checklist = req.body.checklist && typeof req.body.checklist === 'object'
+    ? req.body.checklist
+    : {};
+  const doctorNote = String(req.body.doctor_note || '').trim().slice(0, 1000);
+
+  if (!departmentId) {
+    return res.status(403).json({ success: false, message: 'Doctor account has no assigned department' });
+  }
+
+  if (!queueId) {
+    return res.status(400).json({ success: false, message: 'queue_id is required' });
+  }
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const [queue] = await conn.execute(
+      `SELECT q.queue_id,
+              ${queueCodeSql('d', 'v')} AS code,
+              q.full_name,
+              q.department_id,
+              q.status,
+              q.visit_description
+       FROM queues q
+       JOIN departments d ON d.department_id = q.department_id
+       JOIN visits v ON v.visit_id = q.visit_id
+       WHERE q.queue_id = ?
+         AND q.department_id = ?
+         AND q.status IN ('serving', 'done')
+       LIMIT 1`,
+      [queueId, departmentId]
+    );
+
+    if (!queue) {
+      return res.status(404).json({ success: false, message: 'Queue entry not found for this doctor.' });
+    }
+
+    const departments = await conn.execute(
+      `SELECT department_id, name, code, queue_status
+       FROM departments
+       WHERE department_id <> ?
+         AND queue_status = 'open'
+       ORDER BY name ASC`,
+      [departmentId]
+    );
+
+    const subdepartments = await conn.execute(
+      `SELECT sd.subdepartment_id, sd.department_id, sd.name, sd.room_number, sd.status
+       FROM subdepartments sd
+       JOIN departments d ON d.department_id = sd.department_id
+       WHERE d.department_id <> ?
+         AND d.queue_status = 'open'
+         AND sd.status = 'open'
+         AND sd.deleted_at IS NULL
+       ORDER BY sd.department_id ASC, sd.name ASC`,
+      [departmentId]
+    );
+
+    const suggestion = await suggestDoctorTransfer({
+      patientNote: queue.visit_description,
+      checklist,
+      doctorNote,
+      departments,
+      subdepartments
+    });
+
+    await logQueueAction(conn, {
+      queue_id: queue.queue_id,
+      actor_user_id: req.session.uid,
+      department_id: departmentId,
+      action: 'doctor_transfer_ai_suggested',
+      details: {
+        target_department_id: suggestion ? suggestion.target_department_id : null,
+        subdepartment_ids: suggestion ? suggestion.subdepartment_ids : [],
+        has_doctor_note: Boolean(doctorNote)
+      }
+    });
+
+    return res.json({
+      success: true,
+      suggestion,
+      message: suggestion && suggestion.target_department_id
+        ? 'AI suggestion applied. Review before transferring.'
+        : 'AI could not determine a transfer destination. You can still transfer manually.'
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: err.message, error: err.message });
   } finally {
     if (conn) conn.release();
   }
@@ -5007,11 +5734,13 @@ app.post('/api/doctor/next', reqLogin, reqDoctor, async (req, res) => {
               ${queueCodeSql('d', 'v')} AS code,
               q.full_name,
               q.category,
+              q.visit_description,
               q.status,
               q.counter_id,
               c.name AS counter_name,
               q.subdepartment_id,
-              sd.name AS subdepartment_name
+              sd.name AS subdepartment_name,
+              sd.room_number AS subdepartment_room_number
        FROM queues q
        JOIN departments d ON d.department_id = q.department_id
        JOIN visits v ON v.visit_id = q.visit_id
@@ -5037,6 +5766,7 @@ app.post('/api/doctor/next', reqLogin, reqDoctor, async (req, res) => {
               ${queueCodeSql('d', 'v')} AS code,
               q.full_name,
               q.category,
+              q.visit_description,
               q.department_id,
               q.counter_id,
               q.subdepartment_id,
@@ -5044,7 +5774,8 @@ app.post('/api/doctor/next', reqLogin, reqDoctor, async (req, res) => {
               u.email,
               COALESCE(q.full_name, u.full_name, u.username, 'Patient') AS patient_name,
               c.name AS counter_name,
-              sd.name AS subdepartment_name
+              sd.name AS subdepartment_name,
+              sd.room_number AS subdepartment_room_number
        FROM queues q
        JOIN departments d ON d.department_id = q.department_id
        JOIN visits v ON v.visit_id = q.visit_id
@@ -5074,17 +5805,26 @@ app.post('/api/doctor/next', reqLogin, reqDoctor, async (req, res) => {
     let responseMessage = null;
 
     if (activatedTransfer) {
+      const assignedDestination = activatedTransfer.assigned_queue
+        ? activatedTransfer.assigned_queue.subdepartment_destination
+          || formatSubdepartmentDestination(
+            activatedTransfer.assigned_queue.subdepartment_name,
+            activatedTransfer.assigned_queue.subdepartment_room_number
+          )
+        : null;
       responseNext = {
         ...next,
         status: 'done',
         counter_id: null,
         counter_name: null,
         assigned_subdepartment_id: activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_id : null,
-        assigned_subdepartment_name: activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_name : null
+        assigned_subdepartment_name: activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_name : null,
+        assigned_subdepartment_room_number: activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_room_number : null,
+        assigned_subdepartment_destination: assignedDestination
       };
-      notificationCounterName = activatedTransfer.assigned_queue ? activatedTransfer.assigned_queue.subdepartment_name : null;
+      notificationCounterName = assignedDestination;
       responseMessage = activatedTransfer.assigned_queue
-        ? `Dispatched ${next.code} to ${activatedTransfer.assigned_queue.subdepartment_name}.`
+        ? `Dispatched ${next.code} to ${assignedDestination}.`
         : `Dispatched ${next.code}. No open subdepartments were available.`;
       await updateVisitStatus(conn, next.visit_id);
     } else {
@@ -5217,6 +5957,7 @@ app.post('/api/doctor/done', reqLogin, reqDoctor, async (req, res) => {
     }
 
     const advancedQueue = await finishTransferItemForQueue(conn, queue.queue_id, 'done', req.session.uid);
+    await rebalanceSubdepartmentQueues(conn, departmentId, req.session.uid);
     await updateVisitStatus(conn, queue.visit_id);
     await logQueueAction(conn, {
       queue_id: queue.queue_id,
@@ -5474,6 +6215,7 @@ app.post('/api/counters/:counter_id/done', reqLogin, async (req, res) => {
     );
 
     const advancedQueue = await finishTransferItemForQueue(conn, queue.queue_id, 'done', req.session.uid);
+    await rebalanceSubdepartmentQueues(conn, queue.department_id, req.session.uid);
     await updateVisitStatus(conn, queue.visit_id);
     await logQueueAction(conn, {
       queue_id: queue.queue_id,
@@ -5542,6 +6284,7 @@ app.patch('/api/counters/:counter_id/skip/:queue_id', reqLogin, async (req, res)
     );
 
     const advancedQueue = await finishTransferItemForQueue(conn, queue.queue_id, 'skipped', req.session.uid);
+    await rebalanceSubdepartmentQueues(conn, queue.department_id, req.session.uid);
     await updateVisitStatus(conn, queue.visit_id);
     await logQueueAction(conn, {
       queue_id: queue.queue_id,
@@ -5586,7 +6329,8 @@ app.get('/api/subdepartments/:subdepartment_id/queue', reqLogin, async (req, res
               r.called_at,
               r.finished_at,
               r.subdepartment_id,
-              sd.name AS subdepartment_name
+              sd.name AS subdepartment_name,
+              sd.room_number AS subdepartment_room_number
        FROM queue_subdepartment_requirements r
        JOIN queue_transfers qt ON qt.transfer_id = r.transfer_id
        JOIN queues q ON q.queue_id = qt.queue_id
@@ -5674,6 +6418,8 @@ app.post('/api/subdepartments/:subdepartment_id/next', reqLogin, async (req, res
       completedQueue = { ...current, status: 'done' };
     }
 
+    await rebalanceSubdepartmentQueues(conn, access.subdepartment.department_id, req.session.uid);
+
     const [next] = await conn.execute(
       `SELECT q.queue_id,
               r.requirement_id,
@@ -5685,6 +6431,7 @@ app.post('/api/subdepartments/:subdepartment_id/next', reqLogin, async (req, res
               r.subdepartment_id,
               d.name AS department_name,
               sd.name AS subdepartment_name,
+              sd.room_number AS subdepartment_room_number,
               u.email,
               COALESCE(q.full_name, u.full_name, u.username, 'Patient') AS patient_name
        FROM queue_subdepartment_requirements r
@@ -5753,7 +6500,7 @@ app.post('/api/subdepartments/:subdepartment_id/next', reqLogin, async (req, res
         patientName: next.patient_name,
         queueCode: next.code,
         departmentName: next.department_name,
-        counterName: next.subdepartment_name,
+        counterName: formatSubdepartmentDestination(next.subdepartment_name, next.subdepartment_room_number),
         type: 'call'
       });
     }
@@ -5823,6 +6570,7 @@ app.post('/api/subdepartments/:subdepartment_id/done', reqLogin, async (req, res
     );
 
     const advancedQueue = await finishTransferItemForQueue(conn, queue.queue_id, 'done', req.session.uid, subdepartmentId);
+    await rebalanceSubdepartmentQueues(conn, access.subdepartment.department_id, req.session.uid);
     await updateVisitStatus(conn, queue.visit_id);
     await logQueueAction(conn, {
       queue_id: queue.queue_id,
@@ -5887,6 +6635,7 @@ app.patch('/api/subdepartments/:subdepartment_id/skip/:queue_id', reqLogin, asyn
     );
 
     const advancedQueue = await finishTransferItemForQueue(conn, queue.queue_id, 'skipped', req.session.uid, subdepartmentId);
+    await rebalanceSubdepartmentQueues(conn, access.subdepartment.department_id, req.session.uid);
     await updateVisitStatus(conn, queue.visit_id);
     await logQueueAction(conn, {
       queue_id: queue.queue_id,
@@ -6408,7 +7157,7 @@ app.get('/api/admin/dashboard/stats/:department_id', reqLogin, reqStaffOrAdmin, 
   }
 });
 
-app.get('/api/display/now-serving', reqLogin, async (req, res) => {
+app.get('/api/display/now-serving', async (req, res) => {
   const { department_id } = req.query;
   let conn;
 
@@ -6424,7 +7173,7 @@ app.get('/api/display/now-serving', reqLogin, async (req, res) => {
     }
 
     const departments = await conn.execute(
-      `SELECT d.department_id, d.name, d.queue_status, d.pause_message, d.paused_until
+      `SELECT d.department_id, d.name, d.queue_status
        FROM departments d
        ${departmentFilter}
        ORDER BY d.name ASC`,
@@ -6434,61 +7183,143 @@ app.get('/api/display/now-serving', reqLogin, async (req, res) => {
     const result = [];
 
     for (const department of departments) {
-      const serving = await conn.execute(
+      const publicRows = await conn.execute(
         `SELECT q.queue_id,
                 ${queueCodeSql('d', 'v')} AS code,
-                q.full_name,
-                q.called_at,
+                q.status,
+                COALESCE(sr.called_at, q.called_at) AS called_at,
+                d.department_id,
                 d.name AS department_name,
                 c.name AS counter_name,
+                sd.name AS subdepartment_name,
+                sd.room_number AS room_number,
+                CASE
+                  WHEN sd.subdepartment_id IS NOT NULL AND sd.room_number IS NOT NULL AND sd.room_number <> ''
+                    THEN CONCAT(sd.name, ', Room ', sd.room_number)
+                  WHEN sd.subdepartment_id IS NOT NULL
+                    THEN sd.name
+                  WHEN c.counter_id IS NOT NULL
+                    THEN c.name
+                  ELSE d.name
+                END AS service_label,
+                CASE
+                  WHEN sd.subdepartment_id IS NOT NULL AND sd.room_number IS NOT NULL AND sd.room_number <> ''
+                    THEN CONCAT('Room ', sd.room_number)
+                  ELSE NULL
+                END AS room_label,
                 (
                   SELECT MAX(l.log_id)
                   FROM queue_logs l
                   WHERE l.queue_id = q.queue_id
-                    AND l.action IN ('called_next', 'recalled')
+                    AND l.action IN ('called_next', 'counter_called_next', 'doctor_called_next', 'subdepartment_called_next', 'recalled')
                 ) AS announcement_event_id
          FROM queues q
          LEFT JOIN departments d ON d.department_id = q.department_id
          JOIN visits v ON v.visit_id = q.visit_id
          LEFT JOIN counters c ON c.current_queue_id = q.queue_id
+         LEFT JOIN subdepartments sd ON sd.current_queue_id = q.queue_id
+         LEFT JOIN queue_transfers qt ON qt.queue_id = q.queue_id
+          AND qt.status = 'in_subdepartment'
+         LEFT JOIN queue_subdepartment_requirements sr ON sr.transfer_id = qt.transfer_id
+          AND sr.subdepartment_id = sd.subdepartment_id
+          AND sr.status = 'serving'
          WHERE q.department_id = ?
-           AND q.status = 'serving'
-         ORDER BY q.called_at ASC, q.queue_id ASC`,
-        [department.department_id]
-      );
-
-      const upNext = await conn.execute(
-        `SELECT q.queue_id, ${queueCodeSql('d', 'v')} AS code, q.full_name
-         FROM queues q
+           AND q.status IN ('serving', 'waiting')
+           AND NOT EXISTS (
+             SELECT 1
+             FROM queue_transfers active_qt
+             JOIN queue_subdepartment_requirements active_r
+              ON active_r.transfer_id = active_qt.transfer_id
+             WHERE active_qt.queue_id = q.queue_id
+               AND active_qt.status = 'in_subdepartment'
+               AND active_r.status IN ('queued', 'serving')
+           )
+         UNION ALL
+         SELECT q.queue_id,
+                ${queueCodeSql('d', 'v')} AS code,
+                r.status,
+                COALESCE(r.called_at, r.queued_at, q.called_at, q.created_at) AS called_at,
+                d.department_id,
+                d.name AS department_name,
+                NULL AS counter_name,
+                sd.name AS subdepartment_name,
+                sd.room_number AS room_number,
+                CASE
+                  WHEN sd.room_number IS NOT NULL AND sd.room_number <> ''
+                    THEN CONCAT(sd.name, ', Room ', sd.room_number)
+                  ELSE sd.name
+                END AS service_label,
+                CASE
+                  WHEN sd.room_number IS NOT NULL AND sd.room_number <> ''
+                    THEN CONCAT('Room ', sd.room_number)
+                  ELSE NULL
+                END AS room_label,
+                (
+                  SELECT MAX(l.log_id)
+                  FROM queue_logs l
+                  WHERE l.queue_id = q.queue_id
+                    AND l.action IN ('called_next', 'counter_called_next', 'doctor_called_next', 'subdepartment_called_next', 'recalled')
+                ) AS announcement_event_id
+         FROM queue_subdepartment_requirements r
+         JOIN queue_transfers qt ON qt.transfer_id = r.transfer_id
+         JOIN queues q ON q.queue_id = qt.queue_id
          JOIN departments d ON d.department_id = q.department_id
          JOIN visits v ON v.visit_id = q.visit_id
+         JOIN subdepartments sd ON sd.subdepartment_id = r.subdepartment_id
          WHERE q.department_id = ?
-           AND q.status = 'waiting'
-         ORDER BY q.is_emergency DESC,
-                  q.is_priority DESC,
-                  q.created_at ASC,
-                  q.queue_id ASC
-         LIMIT 5`,
-        [department.department_id]
+           AND qt.status = 'in_subdepartment'
+           AND r.status IN ('queued', 'serving')
+         ORDER BY called_at ASC, queue_id ASC`,
+        [department.department_id, department.department_id]
       );
 
-      const [waitingCount] = await conn.execute(
-        `SELECT COUNT(*) AS count
-         FROM queues q
-         WHERE q.department_id = ?
-           AND q.status = 'waiting'`,
-        [department.department_id]
-      );
+      const rows = publicRows || [];
+      const groupsMap = new Map();
+
+      for (const row of rows) {
+        const key = String(row.subdepartment_name || row.counter_name || row.department_name || 'Service');
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, {
+            label: key,
+            room_label: row.room_label || '',
+            department_name: row.department_name,
+            serving: [],
+            waiting: []
+          });
+        }
+
+        const group = groupsMap.get(key);
+        const item = {
+          queue_id: row.queue_id,
+          code: row.code,
+          status: row.status,
+          called_at: row.called_at,
+          service_label: row.service_label,
+          room_label: row.room_label,
+          announcement_event_id: row.announcement_event_id
+        };
+
+        if (row.status === 'serving') {
+          group.serving.push(item);
+        } else if (row.status === 'waiting' || row.status === 'queued') {
+          group.waiting.push(item);
+        }
+      }
+
+      const groups = [...groupsMap.values()].map(group => ({
+        ...group,
+        serving: group.serving.sort((a, b) => Number(a.queue_id) - Number(b.queue_id)),
+        waiting: group.waiting.sort((a, b) => Number(a.queue_id) - Number(b.queue_id))
+      })).sort((a, b) => String(a.label).localeCompare(String(b.label)));
 
       result.push({
         department_id: department.department_id,
         name: department.name,
         queue_status: department.queue_status,
-        pause_message: department.pause_message,
-        paused_until: department.paused_until,
-        waiting_count: Number(waitingCount.count || 0),
-        serving,
-        up_next: upNext
+        waiting_count: groups.reduce((total, group) => total + group.waiting.length, 0),
+        groups,
+        serving: groups.flatMap(group => group.serving),
+        up_next: groups.flatMap(group => group.waiting).slice(0, 5)
       });
     }
 
@@ -6582,9 +7413,11 @@ app.post('/api/queue/suggest', reqLogin, async (req, res) => {
 app.post('/api/queue/create', reqLogin, async (req, res) => {
   const uid = req.session.uid;
   const { patientName, serviceType, concern, queueType, priority, ai: rawAiSuggestion } = req.body;
+  const requestedSubdepartmentIds = normalizeSubdepartmentIds(req.body.subdepartment_ids);
   const age = normalizeAge(req.body.age);
   const gender = normalizeGender(req.body.gender);
-  const enforceUserActiveQueue = !['owner', 'admin', 'staff'].includes(req.session.role);
+  const createsWalkInQueue = ['owner', 'admin', 'staff', 'doctor'].includes(req.session.role);
+  const enforceUserActiveQueue = !createsWalkInQueue;
 
   if (!patientName || !serviceType || age === null || !gender) {
     return res.status(400).json({ error: 'Missing fields' });
@@ -6631,7 +7464,17 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
          JOIN departments d ON d.department_id = q.department_id
          JOIN visits v ON v.visit_id = q.visit_id
          WHERE q.user_id = ?
-           AND q.status IN ('waiting', 'serving')
+           AND (
+             q.status IN ('waiting', 'serving')
+             OR EXISTS (
+               SELECT 1
+               FROM queue_transfers qt
+               JOIN queue_subdepartment_requirements r ON r.transfer_id = qt.transfer_id
+               WHERE qt.queue_id = q.queue_id
+                 AND qt.status = 'in_subdepartment'
+                 AND r.status IN ('pending', 'queued', 'serving')
+             )
+           )
          ORDER BY q.created_at DESC
          LIMIT 1
          FOR UPDATE`,
@@ -6655,7 +7498,7 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
     const aiSuggestion = normalizeVisitConcernPayload(rawAiSuggestion, availableDepartments);
 
     const [categ] = await conn.execute(
-      `SELECT code, department_id, queue_status, pause_message, paused_until
+      `SELECT code, department_id, queue_status
 	       FROM departments
 	       WHERE name = ?
 	       FOR UPDATE`,
@@ -6672,15 +7515,56 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
 
       return res.status(403).json({
         success: false,
-        message: categ.pause_message || 'Queue is currently closed.',
-        error: categ.pause_message || 'Queue is currently closed.',
-        department_status: categ.queue_status,
-        pause_message: categ.pause_message,
-        paused_until: categ.paused_until
+        message: 'Queue is currently closed.',
+        error: 'Queue is currently closed.',
+        department_status: categ.queue_status
       });
     }
 
-    const visit = await getOrCreateActiveVisit(conn, uid);
+    const departmentSubdepartments = await conn.execute(
+      `SELECT subdepartment_id, status
+       FROM subdepartments
+       WHERE department_id = ?
+         AND deleted_at IS NULL
+       FOR UPDATE`,
+      [categ.department_id]
+    );
+    const validSubdepartmentIds = new Map(
+      departmentSubdepartments.map(row => [Number(row.subdepartment_id), row.status])
+    );
+
+    if (enforceUserActiveQueue && validSubdepartmentIds.size && !requestedSubdepartmentIds.length) {
+      await conn.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Select at least one required service for this department.',
+        error: 'Select at least one required service for this department.'
+      });
+    }
+
+    const invalidSubdepartment = requestedSubdepartmentIds.find(subdepartmentId => !validSubdepartmentIds.has(subdepartmentId));
+    if (invalidSubdepartment) {
+      await conn.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Selected service does not belong to this department.',
+        error: 'Selected service does not belong to this department.'
+      });
+    }
+
+    const closedSubdepartment = requestedSubdepartmentIds.find(subdepartmentId => validSubdepartmentIds.get(subdepartmentId) !== 'open');
+    if (closedSubdepartment) {
+      await conn.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Selected service is not currently open.',
+        error: 'Selected service is not currently open.'
+      });
+    }
+
+    const visit = createsWalkInQueue
+      ? await createVisit(conn, uid)
+      : await getOrCreateActiveVisit(conn, uid);
     const code = formatQueueCode(categ.code, visit.global_number);
 
     const insert = await insertQueue(conn, {
@@ -6700,6 +7584,42 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
       ai_priority_level: aiSuggestion ? aiSuggestion.priority_level : null,
       ai_reason: aiSuggestion ? aiSuggestion.reason : null
     });
+
+    let transferId = null;
+    let assignedSubdepartmentQueue = null;
+
+    if (requestedSubdepartmentIds.length) {
+      const transferInsert = await conn.execute(
+        `INSERT INTO queue_transfers
+         (queue_id, from_department_id, to_department_id, status, called_at)
+         VALUES (?, ?, ?, 'in_subdepartment', NOW())`,
+        [insert.insertId, categ.department_id, categ.department_id]
+      );
+      transferId = Number(transferInsert.insertId);
+
+      for (const subdepartmentId of requestedSubdepartmentIds) {
+        await conn.execute(
+          `INSERT INTO queue_subdepartment_requirements
+           (transfer_id, subdepartment_id, status)
+           VALUES (?, ?, 'pending')`,
+          [transferId, subdepartmentId]
+        );
+      }
+
+      await conn.execute(
+        `UPDATE queues
+         SET status = 'done',
+             called_at = NOW(),
+             finished_at = NOW(),
+             counter_id = NULL,
+             subdepartment_id = NULL
+         WHERE queue_id = ?`,
+        [insert.insertId]
+      );
+
+      assignedSubdepartmentQueue = await assignNextPendingSubdepartment(conn, transferId, uid);
+      await rebalanceSubdepartmentQueues(conn, categ.department_id, uid);
+    }
 
     if (Number(userLock.age) !== age || userLock.gender !== gender) {
       await conn.execute(
@@ -6723,33 +7643,65 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
         gender,
         category,
         ai_priority_level: aiSuggestion ? aiSuggestion.priority_level : null,
+        subdepartment_ids: requestedSubdepartmentIds,
+        transfer_id: transferId,
+        assigned_subdepartment_id: assignedSubdepartmentQueue ? assignedSubdepartmentQueue.subdepartment_id : null,
         source: enforceUserActiveQueue ? 'patient' : 'admin'
       }
     });
 
-    const [ahead] = await conn.execute(
-      `SELECT COUNT(*) AS ahead
-       FROM queues q2
-       JOIN queues q ON q.queue_id = ?
-       WHERE q2.department_id = q.department_id
-         AND q2.status = 'waiting'
-         AND (
-           COALESCE(q2.is_emergency, 0) > COALESCE(q.is_emergency, 0)
-           OR (
-             COALESCE(q2.is_emergency, 0) = COALESCE(q.is_emergency, 0)
-             AND COALESCE(q2.is_priority, 0) > COALESCE(q.is_priority, 0)
-           )
-           OR (
-             COALESCE(q2.is_emergency, 0) = COALESCE(q.is_emergency, 0)
-             AND COALESCE(q2.is_priority, 0) = COALESCE(q.is_priority, 0)
-             AND (
-               q2.created_at < q.created_at
-               OR (q2.created_at = q.created_at AND q2.queue_id < q.queue_id)
+    const [ahead] = assignedSubdepartmentQueue
+      ? await conn.execute(
+        `SELECT COUNT(*) AS ahead
+         FROM queue_subdepartment_requirements r2
+         JOIN queue_transfers qt2 ON qt2.transfer_id = r2.transfer_id
+         JOIN queues q2 ON q2.queue_id = qt2.queue_id
+         JOIN queue_subdepartment_requirements r ON r.requirement_id = ?
+         JOIN queue_transfers qt ON qt.transfer_id = r.transfer_id
+         JOIN queues q ON q.queue_id = qt.queue_id
+         WHERE r2.subdepartment_id = r.subdepartment_id
+           AND r2.status = 'queued'
+           AND qt2.status = 'in_subdepartment'
+           AND (
+             COALESCE(q2.is_emergency, 0) > COALESCE(q.is_emergency, 0)
+             OR (
+               COALESCE(q2.is_emergency, 0) = COALESCE(q.is_emergency, 0)
+               AND COALESCE(q2.is_priority, 0) > COALESCE(q.is_priority, 0)
              )
-           )
-         )`,
-      [insert.insertId]
-    );
+             OR (
+               COALESCE(q2.is_emergency, 0) = COALESCE(q.is_emergency, 0)
+               AND COALESCE(q2.is_priority, 0) = COALESCE(q.is_priority, 0)
+               AND (
+                 COALESCE(r2.queued_at, q2.created_at) < COALESCE(r.queued_at, q.created_at)
+                 OR (COALESCE(r2.queued_at, q2.created_at) = COALESCE(r.queued_at, q.created_at) AND q2.queue_id < q.queue_id)
+               )
+             )
+           )`,
+        [assignedSubdepartmentQueue.requirement_id || 0]
+      )
+      : await conn.execute(
+        `SELECT COUNT(*) AS ahead
+         FROM queues q2
+         JOIN queues q ON q.queue_id = ?
+         WHERE q2.department_id = q.department_id
+           AND q2.status = 'waiting'
+           AND (
+             COALESCE(q2.is_emergency, 0) > COALESCE(q.is_emergency, 0)
+             OR (
+               COALESCE(q2.is_emergency, 0) = COALESCE(q.is_emergency, 0)
+               AND COALESCE(q2.is_priority, 0) > COALESCE(q.is_priority, 0)
+             )
+             OR (
+               COALESCE(q2.is_emergency, 0) = COALESCE(q.is_emergency, 0)
+               AND COALESCE(q2.is_priority, 0) = COALESCE(q.is_priority, 0)
+               AND (
+                 q2.created_at < q.created_at
+                 OR (q2.created_at = q.created_at AND q2.queue_id < q.queue_id)
+               )
+             )
+           )`,
+        [insert.insertId]
+      );
     const aheadCount = Number(ahead.ahead || 0);
 
     await conn.commit();
@@ -6761,6 +7713,10 @@ app.post('/api/queue/create', reqLogin, async (req, res) => {
       ahead: aheadCount,
       position: aheadCount + 1,
       code,
+      subdepartment_id: assignedSubdepartmentQueue ? assignedSubdepartmentQueue.subdepartment_id : null,
+      subdepartment_name: assignedSubdepartmentQueue ? assignedSubdepartmentQueue.subdepartment_name : null,
+      subdepartment_room_number: assignedSubdepartmentQueue ? assignedSubdepartmentQueue.subdepartment_room_number : null,
+      subdepartment_destination: assignedSubdepartmentQueue ? assignedSubdepartmentQueue.subdepartment_destination : null,
       ai: aiSuggestion ? {
         suggested_department: aiSuggestion.suggested_department,
         category: aiSuggestion.category,
@@ -6823,7 +7779,7 @@ app.get('/queue', reqLogin, (req, res) => {
   res.sendFile(path.join(__dirname, 'protected/user.html'));
 });
 
-app.get('/display', reqLogin, (req, res) => {
+app.get('/display', (req, res) => {
   res.sendFile(path.join(__dirname, 'protected/display.html'));
 });
 

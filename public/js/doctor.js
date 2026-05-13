@@ -9,11 +9,36 @@ const state = {
     refresh: false,
     callNext: false,
     markDone: false,
-    transfer: false
-  }
+    transfer: false,
+    subdepartments: false,
+    transferSuggest: false
+  },
+  subdepartmentLoadError: '',
+  checklistSuggestionKey: '',
+  checklistNoteTimer: null
 };
 
+const CHECKLIST_ITEMS = [
+  'concern_reviewed',
+  'vitals_reviewed',
+  'symptoms_reviewed',
+  'history_reviewed',
+  'physical_exam_completed',
+  'initial_impression_documented',
+  'patient_advised'
+];
+
 const $ = selector => document.querySelector(selector);
+
+function wireLogoutButton() {
+  const logout = $('#btn-logout');
+  if (!logout || logout.dataset.bound === '1') return;
+  logout.dataset.bound = '1';
+  logout.addEventListener('click', async () => {
+    await fetch('/logout', { method: 'POST', credentials: 'include' });
+    window.location.href = '/login';
+  });
+}
 
 function toast(message) {
   const el = $('#toast');
@@ -80,6 +105,7 @@ function normalizeSubdepartment(subdepartment) {
     subdepartment_id: Number(subdepartment.subdepartment_id ?? subdepartment.subdepartmentId ?? subdepartment.id),
     department_id: Number(subdepartment.department_id ?? subdepartment.departmentId),
     name: subdepartment.name || subdepartment.subdepartment_name || 'Subdepartment',
+    room_number: subdepartment.room_number || subdepartment.roomNumber || '',
     status: subdepartment.status || 'open',
     current_queue_id: subdepartment.current_queue_id ?? subdepartment.currentQueueId ?? null
   };
@@ -93,6 +119,27 @@ function selectedTargetDepartment() {
 function targetSubdepartments() {
   const targetId = Number($('#target-department').value);
   return state.subdepartments.filter(subdepartment => Number(subdepartment.department_id) === targetId);
+}
+
+function cacheDepartmentSubdepartments(departmentId, subdepartments) {
+  const targetId = Number(departmentId);
+  const normalized = (subdepartments || []).map(normalizeSubdepartment).filter(subdepartment => {
+    return subdepartment.subdepartment_id && Number(subdepartment.department_id) === targetId;
+  });
+
+  state.subdepartments = state.subdepartments
+    .filter(subdepartment => Number(subdepartment.department_id) !== targetId)
+    .concat(normalized);
+
+  return normalized;
+}
+
+async function loadTargetSubdepartments() {
+  const targetDepartment = selectedTargetDepartment();
+  if (!targetDepartment) return [];
+
+  const data = await requestJson(`/api/departments/${targetDepartment.department_id}/subdepartments`);
+  return cacheDepartmentSubdepartments(targetDepartment.department_id, data.subdepartments || []);
 }
 
 function selectedSubdepartmentIds() {
@@ -114,18 +161,152 @@ function updateActionStates() {
     || !targetDepartment
     || targetDepartment.queue_status !== 'open'
     || needsSubdepartmentSelection
+    || state.busy.subdepartments
+    || state.busy.transferSuggest
+    || !!state.subdepartmentLoadError
     || state.busy.transfer
     || state.busy.refresh;
 }
 
 function renderNowServing() {
   const queue = state.currentQueue;
+  const destination = queue && queue.subdepartment_name
+    ? `${queue.subdepartment_name}${queue.subdepartment_room_number ? ' · Room ' + queue.subdepartment_room_number : ''}`
+    : queue && queue.counter_name;
   $('#now-code').textContent = queue ? queue.code : '--';
   $('#now-name').textContent = patientLabel(queue);
   $('#now-meta').textContent = queue
-    ? [queue.category, queue.subdepartment_name || queue.counter_name].filter(Boolean).join(' / ')
+    ? [queue.category, destination].filter(Boolean).join(' / ')
     : 'Call the next patient from your department queue.';
+  $('#patient-note').textContent = queue && queue.visit_description
+    ? queue.visit_description
+    : 'No patient note available.';
+  renderChecklist();
   updateActionStates();
+}
+
+function checklistInputs() {
+  return [...document.querySelectorAll('#doctor-checklist input[type="checkbox"]')];
+}
+
+function getChecklistValues() {
+  return checklistInputs().reduce((acc, input) => {
+    acc[input.value] = input.checked;
+    return acc;
+  }, {});
+}
+
+function setAiStatus(message, mode = '') {
+  const status = $('#checklist-ai-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('ready', mode === 'ready');
+  status.classList.toggle('error', mode === 'error');
+}
+
+function resetChecklist() {
+  checklistInputs().forEach(input => {
+    input.checked = false;
+    input.disabled = !state.currentQueue;
+  });
+  const note = $('#doctor-checkup-note');
+  if (note) {
+    note.value = '';
+    note.disabled = !state.currentQueue;
+  }
+  state.checklistSuggestionKey = '';
+  setAiStatus(state.currentQueue ? 'Complete checklist for AI suggestion' : 'Waiting for active patient');
+}
+
+function renderChecklist() {
+  const active = Boolean(state.currentQueue);
+  checklistInputs().forEach(input => {
+    input.disabled = !active || state.busy.transferSuggest;
+  });
+  const note = $('#doctor-checkup-note');
+  if (note) note.disabled = !active || state.busy.transferSuggest;
+
+  if (!active) {
+    setAiStatus('Waiting for active patient');
+  } else if (!isChecklistComplete()) {
+    setAiStatus('Complete checklist for AI suggestion');
+  }
+}
+
+function isChecklistComplete() {
+  const values = getChecklistValues();
+  return CHECKLIST_ITEMS.every(item => values[item]);
+}
+
+async function applyTransferSuggestion(suggestion) {
+  if (!suggestion || !suggestion.target_department_id) return false;
+
+  const select = $('#target-department');
+  const option = [...select.options].find(opt => Number(opt.value) === Number(suggestion.target_department_id) && !opt.disabled);
+  if (!option) return false;
+
+  select.value = option.value;
+  await refreshTargetSubdepartments();
+
+  const suggestedIds = new Set((suggestion.subdepartment_ids || []).map(Number));
+  document.querySelectorAll('#subdepartment-options input[type="checkbox"]').forEach(input => {
+    input.checked = suggestedIds.has(Number(input.value));
+  });
+
+  const notes = $('#transfer-notes');
+  if (notes && suggestion.reason) {
+    const doctorNote = $('#doctor-checkup-note') ? $('#doctor-checkup-note').value.trim() : '';
+    notes.value = [
+      `AI routing suggestion: ${suggestion.reason}`,
+      doctorNote ? `Doctor note: ${doctorNote}` : ''
+    ].filter(Boolean).join('\n\n');
+  }
+
+  updateActionStates();
+  return true;
+}
+
+async function maybeSuggestTransfer() {
+  if (!state.currentQueue || state.busy.transferSuggest || !isChecklistComplete()) return;
+
+  const doctorNote = $('#doctor-checkup-note') ? $('#doctor-checkup-note').value.trim() : '';
+  const suggestionKey = [
+    state.currentQueue.queue_id,
+    CHECKLIST_ITEMS.map(item => `${item}:${getChecklistValues()[item] ? 1 : 0}`).join(','),
+    doctorNote
+  ].join('|');
+
+  if (state.checklistSuggestionKey === suggestionKey) return;
+
+  state.checklistSuggestionKey = suggestionKey;
+  state.busy.transferSuggest = true;
+  setAiStatus('Getting AI suggestion...');
+  renderChecklist();
+  updateActionStates();
+
+  try {
+    const data = await requestJson('/api/doctor/transfer-suggest', {
+      method: 'POST',
+      body: JSON.stringify({
+        queue_id: state.currentQueue.queue_id,
+        checklist: getChecklistValues(),
+        doctor_note: doctorNote
+      })
+    });
+
+    const applied = await applyTransferSuggestion(data.suggestion);
+    setAiStatus(applied ? 'Suggestion applied, review before transfer' : 'No clear suggestion', applied ? 'ready' : 'error');
+    toast(data.message || (applied ? 'AI suggestion applied' : 'No clear AI suggestion'));
+  } catch (err) {
+    console.error(err);
+    state.checklistSuggestionKey = '';
+    setAiStatus('AI suggestion unavailable', 'error');
+    toast(err.message || 'AI suggestion unavailable');
+  } finally {
+    state.busy.transferSuggest = false;
+    renderChecklist();
+    updateActionStates();
+  }
 }
 
 function renderDepartments() {
@@ -143,7 +324,7 @@ function renderDepartments() {
   select.innerHTML = options || '<option value="">No available departments</option>';
   const firstOpenOption = [...select.options].find(option => !option.disabled && option.value);
   if (firstOpenOption) select.value = firstOpenOption.value;
-  renderSubdepartments();
+  refreshTargetSubdepartments().catch(err => toast(err.message));
 }
 
 function renderSubdepartments() {
@@ -153,6 +334,18 @@ function renderSubdepartments() {
 
   if (!targetDepartment) {
     box.innerHTML = '<p class="muted">Select a target department.</p>';
+    updateActionStates();
+    return;
+  }
+
+  if (state.busy.subdepartments) {
+    box.innerHTML = '<p class="muted">Loading subdepartments...</p>';
+    updateActionStates();
+    return;
+  }
+
+  if (state.subdepartmentLoadError) {
+    box.innerHTML = `<p class="muted">${escapeHtml(state.subdepartmentLoadError)}</p>`;
     updateActionStates();
     return;
   }
@@ -170,7 +363,7 @@ function renderSubdepartments() {
         value="${subdepartment.subdepartment_id}"
         ${subdepartment.status !== 'open' ? 'disabled' : ''}
       >
-      <span>${escapeHtml(subdepartment.name)}</span>
+      <span>${escapeHtml(subdepartment.name)}${subdepartment.room_number ? ` · Room ${escapeHtml(subdepartment.room_number)}` : ''}</span>
       <em>${escapeHtml(subdepartment.status)}</em>
     </label>
   `).join('');
@@ -179,19 +372,57 @@ function renderSubdepartments() {
   updateActionStates();
 }
 
+async function refreshTargetSubdepartments() {
+  const box = $('#subdepartment-options');
+  const targetDepartment = selectedTargetDepartment();
+  state.subdepartmentLoadError = '';
+
+  if (!targetDepartment) {
+    renderSubdepartments();
+    return;
+  }
+
+  state.busy.subdepartments = true;
+  if (box) box.innerHTML = '<p class="muted">Loading subdepartments...</p>';
+  updateActionStates();
+
+  try {
+    await loadTargetSubdepartments();
+  } catch (err) {
+    console.error(err);
+    state.subdepartmentLoadError = err.message || 'Failed to load subdepartments.';
+    toast(state.subdepartmentLoadError);
+  } finally {
+    state.busy.subdepartments = false;
+    renderSubdepartments();
+  }
+}
+
 function renderQueue(queues) {
   const list = $('#doctor-queue');
-  if (!queues.length) {
+  const waitingQueues = (queues || []).filter(queue => queue.status === 'waiting');
+  const waitingCount = $('#waiting-count');
+
+  if (waitingCount) {
+    waitingCount.textContent = `${waitingQueues.length} waiting`;
+  }
+
+  if (!waitingQueues.length) {
     list.innerHTML = '<p class="muted">No active queue entries.</p>';
     return;
   }
 
-  list.innerHTML = queues.map(queue => `
+  list.innerHTML = waitingQueues.map(queue => `
     <article class="queue-item ${queue.status === 'serving' ? 'serving' : ''}">
       <div class="item-code">${escapeHtml(queue.code)}</div>
       <div>
         <div class="item-name">${escapeHtml(patientLabel(queue))}</div>
-        <div class="item-meta">${escapeHtml([queue.category, queue.subdepartment_name || queue.counter_name].filter(Boolean).join(' / ') || 'General')}</div>
+        <div class="item-meta">${escapeHtml([
+          queue.category,
+          queue.subdepartment_name
+            ? `${queue.subdepartment_name}${queue.subdepartment_room_number ? ' · Room ' + queue.subdepartment_room_number : ''}`
+            : queue.counter_name
+        ].filter(Boolean).join(' / ') || 'General')}</div>
       </div>
       <div class="badge">${escapeHtml(queue.status)}</div>
     </article>
@@ -208,8 +439,12 @@ async function refreshQueue() {
     const data = await requestJson('/api/doctor/queue');
     const queues = data.queues || [];
     const serving = queues.find(queue => queue.status === 'serving') || null;
+    const previousQueueId = state.currentQueue ? Number(state.currentQueue.queue_id) : null;
     state.currentQueue = serving;
     if (serving) state.completedQueue = null;
+    if ((serving ? Number(serving.queue_id) : null) !== previousQueueId) {
+      resetChecklist();
+    }
     renderNowServing();
     renderQueue(queues);
   } finally {
@@ -230,6 +465,7 @@ async function bootstrap() {
 
   $('#doctor-name').textContent = data.doctor.full_name || data.doctor.username || 'Doctor';
   $('#doctor-department').textContent = state.assignedDepartment.name;
+  wireLogoutButton();
   renderDepartments();
   await refreshQueue();
 }
@@ -242,8 +478,12 @@ async function callNext() {
 
   try {
     const data = await requestJson('/api/doctor/next', { method: 'POST', body: '{}' });
+    const previousQueueId = state.currentQueue ? Number(state.currentQueue.queue_id) : null;
     state.currentQueue = data.next && data.next.status !== 'done' ? data.next : null;
     state.completedQueue = null;
+    if ((state.currentQueue ? Number(state.currentQueue.queue_id) : null) !== previousQueueId) {
+      resetChecklist();
+    }
     renderNowServing();
     await refreshQueue();
     toast(data.message || (data.next ? `Now serving ${data.next.code}` : 'No waiting patients.'));
@@ -267,6 +507,7 @@ async function markDone() {
     });
     state.completedQueue = data.completed_queue;
     state.currentQueue = null;
+    resetChecklist();
     renderNowServing();
     await refreshQueue();
     toast(`${state.completedQueue.code} marked done`);
@@ -310,8 +551,9 @@ async function transferPatient() {
     });
     state.currentQueue = null;
     state.completedQueue = null;
+    resetChecklist();
     $('#transfer-notes').value = '';
-    renderSubdepartments();
+    await refreshTargetSubdepartments();
     renderNowServing();
     await refreshQueue();
     toast(data.message || (data.queue ? `Transferred as ${data.queue.code}` : 'Patient transferred'));
@@ -322,10 +564,24 @@ async function transferPatient() {
   }
 }
 
-$('#target-department').addEventListener('change', renderSubdepartments);
+$('#target-department').addEventListener('change', () => refreshTargetSubdepartments().catch(err => toast(err.message)));
 $('#refresh-queue').addEventListener('click', () => refreshQueue().catch(err => toast(err.message)));
 $('#call-next').addEventListener('click', () => callNext().catch(err => toast(err.message)));
 $('#mark-done').addEventListener('click', () => markDone().catch(err => toast(err.message)));
 $('#transfer-patient').addEventListener('click', () => transferPatient().catch(err => toast(err.message)));
+checklistInputs().forEach(input => input.addEventListener('change', () => {
+  renderChecklist();
+  maybeSuggestTransfer().catch(err => toast(err.message));
+}));
+$('#doctor-checkup-note').addEventListener('input', () => {
+  if (isChecklistComplete()) {
+    state.checklistSuggestionKey = '';
+    setAiStatus('Checklist changed, getting updated suggestion...');
+    clearTimeout(state.checklistNoteTimer);
+    state.checklistNoteTimer = setTimeout(() => {
+      maybeSuggestTransfer().catch(err => toast(err.message));
+    }, 700);
+  }
+});
 
 bootstrap().catch(err => toast(err.message));

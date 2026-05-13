@@ -1307,3 +1307,38 @@ button {
     width: 100%;
   }
 }
+
+body.login-page,
+body.signup-page {
+  overflow-x: hidden;
+}
+
+.auth-main {
+  min-width: 0;
+}
+
+.login-shell,
+.signup-shell {
+  gap: clamp(18px, 2.4vw, 32px);
+}
+
+.login-hero,
+.signup-hero,
+.login-panel,
+.signup-panel {
+  min-width: 0;
+}
+
+@media (max-width: 1020px) {
+  .login-shell,
+  .signup-shell {
+    height: auto;
+    min-height: 100dvh;
+    grid-template-columns: 1fr;
+  }
+
+  .login-hero,
+  .signup-hero {
+    min-height: 0;
+  }
+}

@@ -57,12 +57,14 @@ function renderNowServing() {
 
 function renderQueue(queues) {
   const list = $('#subdepartment-queue');
-  if (!queues.length) {
+  const waitingQueues = (queues || []).filter(queue => queue.status === 'queued');
+
+  if (!waitingQueues.length) {
     list.innerHTML = '<p class="muted">No active queue entries.</p>';
     return;
   }
 
-  list.innerHTML = queues.map(queue => `
+  list.innerHTML = waitingQueues.map(queue => `
     <article class="queue-item ${queue.status === 'serving' ? 'serving' : ''}">
       <div class="item-code">${escapeHtml(queue.code)}</div>
       <div>
@@ -74,6 +76,16 @@ function renderQueue(queues) {
   `).join('');
 }
 
+function wireLogoutButton() {
+  const logout = document.getElementById('btn-logout');
+  if (!logout || logout.dataset.bound === '1') return;
+  logout.dataset.bound = '1';
+  logout.addEventListener('click', async () => {
+    await fetch('/logout', { method: 'POST', credentials: 'include' });
+    window.location.href = '/login';
+  });
+}
+
 async function refreshQueue() {
   const id = subdepartmentId();
   if (!id) throw new Error('Missing subdepartment_id');
@@ -83,7 +95,11 @@ async function refreshQueue() {
   subdepartmentState.currentQueue = data.queues.find(queue => queue.status === 'serving') || null;
 
   $('#subdepartment-name').textContent = data.subdepartment.name;
-  $('#subdepartment-department').textContent = data.subdepartment.department_name;
+  $('#subdepartment-department').textContent = [
+    data.subdepartment.department_name,
+    data.subdepartment.room_number ? `Room ${data.subdepartment.room_number}` : ''
+  ].filter(Boolean).join(' · ');
+  wireLogoutButton();
   renderNowServing();
   renderQueue(data.queues);
 }

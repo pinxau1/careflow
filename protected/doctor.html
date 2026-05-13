@@ -13,7 +13,10 @@
         <p class="eyebrow">Doctor Desk</p>
         <h1 id="doctor-name">Doctor</h1>
       </div>
-      <div class="dept-pill" id="doctor-department">Department</div>
+      <div class="topbar-actions">
+        <div class="dept-pill" id="doctor-department">Department</div>
+        <button class="btn-logout" id="btn-logout" type="button">Log out</button>
+      </div>
     </header>
 
     <section class="command-grid">
@@ -25,10 +28,35 @@
         <div class="queue-code" id="now-code">--</div>
         <h2 id="now-name">No active patient</h2>
         <p id="now-meta" class="muted">Call the next patient from your department queue.</p>
+        <div class="patient-note-box">
+          <p class="eyebrow">Patient Note</p>
+          <p id="patient-note" class="muted">No patient note available.</p>
+        </div>
         <div class="action-row">
           <button class="primary" id="call-next" type="button">Call Next</button>
           <button class="secondary" id="mark-done" type="button" disabled>Mark Done</button>
+          <span class="queue-count-pill" id="waiting-count">0 waiting</span>
         </div>
+      </article>
+
+      <article class="checklist-panel">
+        <div class="panel-head">
+          <p class="eyebrow">Normal Check-up Checklist</p>
+          <span class="suggestion-state" id="checklist-ai-status">Waiting for active patient</span>
+        </div>
+        <div class="checklist-list" id="doctor-checklist">
+          <label class="check-row"><input type="checkbox" value="concern_reviewed" disabled><span>Patient concern reviewed</span></label>
+          <label class="check-row"><input type="checkbox" value="vitals_reviewed" disabled><span>Vital signs reviewed</span></label>
+          <label class="check-row"><input type="checkbox" value="symptoms_reviewed" disabled><span>Symptoms reviewed</span></label>
+          <label class="check-row"><input type="checkbox" value="history_reviewed" disabled><span>Relevant history/allergies reviewed</span></label>
+          <label class="check-row"><input type="checkbox" value="physical_exam_completed" disabled><span>Physical exam completed</span></label>
+          <label class="check-row"><input type="checkbox" value="initial_impression_documented" disabled><span>Initial impression documented</span></label>
+          <label class="check-row"><input type="checkbox" value="patient_advised" disabled><span>Patient advised</span></label>
+        </div>
+        <label>
+          Additional note
+          <textarea id="doctor-checkup-note" rows="3" placeholder="Add details not covered by the checklist" disabled></textarea>
+        </label>
       </article>
 
       <article class="transfer-panel">
@@ -58,6 +86,7 @@
       </div>
       <div class="queue-list" id="doctor-queue"></div>
     </section>
+
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

@@ -1190,6 +1190,7 @@ header {
 
 .fallback-contact {
   display: flex;
+  margin: 20px;
   align-items: center;
   gap: 0.45rem;
   min-width: 0;
@@ -1200,7 +1201,7 @@ header {
   justify-content: flex-end;
   padding: 0.25rem;
   border: 1px solid rgba(32, 75, 58, 0.1);
-  border-radius: 999px;
+  border-radius: 10px;
   background:
     linear-gradient(135deg, rgba(232, 245, 238, 0.92), rgba(255, 255, 255, 0.82)),
     var(--surface2);
@@ -2392,4 +2393,379 @@ footer {
     max-height: none;
     overflow-y: auto;
   }
+}
+
+body {
+  overflow-x: hidden;
+}
+
+main,
+#patientFlow,
+aside,
+.right-panel,
+.serving-panel,
+.waiting-sidebar-card,
+.queue-card,
+.dept-status-card,
+.add-card,
+.schedule-card {
+  min-width: 0;
+}
+
+.queue-list,
+.dept-status-list,
+.schedule-list,
+.schedule-placeholder {
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 980px) {
+  main,
+  #patientFlow {
+    grid-template-columns: 1fr;
+  }
+
+  aside {
+    position: static;
+    overflow: visible;
+  }
+}
+
+/* Styling-only overlap corrections for the patient queue page. */
+html,
+body {
+  height: auto;
+  min-height: 100%;
+}
+
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+main,
+#patientFlow {
+  height: auto;
+  min-height: calc(100dvh - 112px);
+  overflow: visible;
+  align-items: start;
+}
+
+aside,
+.right-panel,
+.serving-panel,
+.waiting-sidebar-card,
+.dept-status-card,
+.add-card,
+.schedule-card,
+.schedule-placeholder,
+.schedule-list,
+.dept-status-list,
+.queue-list,
+.form-row,
+.form-actions {
+  min-width: 0;
+}
+
+.right-panel {
+  overflow: visible;
+}
+
+.dept-status-card,
+.schedule-card,
+.waiting-sidebar-card {
+  height: auto;
+  max-height: none;
+}
+
+.dept-status-list,
+.schedule-placeholder,
+.schedule-list,
+.waiting-sidebar-card .queue-list {
+  max-height: none;
+}
+
+.fallback-contact {
+  margin: 0.75rem 1rem 1rem;
+  padding: 0.75rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-content: flex-start;
+  gap: 0.5rem;
+}
+
+.fallback-contact-pill {
+  max-width: 100%;
+  min-height: 32px;
+  border-radius: 8px;
+  background: var(--surface2);
+  border-color: var(--border);
+  color: var(--text-muted);
+  justify-content: flex-start;
+}
+
+.fallback-contact a:hover {
+  box-shadow: none;
+  background: var(--accent-light);
+}
+
+@media (min-width: 821px) {
+  html,
+  body {
+    height: auto;
+    overflow-y: auto;
+  }
+
+  main,
+  #patientFlow {
+    height: auto;
+    min-height: calc(100dvh - 112px);
+    overflow: visible;
+    align-items: start;
+  }
+
+  aside {
+    display: grid;
+    grid-template-rows: auto auto;
+    overflow: visible;
+  }
+
+  .right-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    grid-template-rows: auto auto;
+    align-items: start;
+    overflow: visible;
+  }
+
+  .add-card {
+    grid-column: 1 / 2;
+    grid-row: 1 / 2;
+  }
+
+  .schedule-card {
+    grid-column: 1 / 2;
+    grid-row: 2 / 3;
+  }
+
+  .dept-status-card {
+    grid-column: 2 / 3;
+    grid-row: 1 / 3;
+  }
+
+  .dept-status-list,
+  .schedule-placeholder,
+  .schedule-list,
+  .waiting-sidebar-card .queue-list {
+    overflow: auto;
+    scrollbar-width: thin;
+  }
+
+  .dept-status-list {
+    max-height: 560px;
+  }
+
+  .schedule-placeholder,
+  .schedule-list {
+    max-height: 420px;
+  }
+}
+
+@media (max-width: 820px) {
+  main,
+  #patientFlow {
+    min-height: 0;
+    padding-bottom: 2rem;
+  }
+
+  .fallback-contact {
+    margin-inline: 1rem;
+  }
+
+  .fallback-contact-pill {
+    width: auto;
+    flex: 1 1 180px;
+  }
+}
+
+@media (max-width: 560px) {
+  .fallback-contact {
+    margin-inline: 0.85rem;
+  }
+
+  .fallback-contact-pill {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* Patient queue: keep Department Status compact instead of stretching tall. */
+@media (min-width: 821px) {
+  #patientFlow .right-panel {
+    align-items: start;
+    grid-template-rows: auto auto auto;
+  }
+
+  #patientFlow .add-card {
+    grid-column: 1 / 2;
+    grid-row: 1;
+  }
+
+  #patientFlow .dept-status-card {
+    grid-column: 2 / 3;
+    grid-row: 1;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    align-self: start;
+  }
+
+  #patientFlow .schedule-card {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    align-self: start;
+  }
+
+  #patientFlow .dept-status-list {
+    flex: 0 1 auto;
+    max-height: min(42vh, 420px);
+    align-content: start;
+    overflow: auto;
+  }
+
+  #patientFlow .schedule-placeholder,
+  #patientFlow .schedule-list {
+    max-height: min(32vh, 340px);
+  }
+}
+
+@media (max-width: 820px) {
+  #patientFlow .dept-status-card,
+  #patientFlow .schedule-card {
+    height: auto;
+    max-height: none;
+  }
+
+  #patientFlow .dept-status-list {
+    max-height: none;
+  }
+}
+
+/* Patient queue: move fallback contact to footer and replace the form with schedule after queueing. */
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+}
+
+footer .fallback-contact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  gap: 0.45rem;
+}
+
+footer .fallback-contact-pill {
+  flex: 0 1 auto;
+  width: auto;
+  min-height: 28px;
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text-muted);
+  justify-content: center;
+}
+
+@media (min-width: 821px) {
+  #patientFlow .right-panel {
+    grid-template-rows: auto auto;
+  }
+
+  #patientFlow.has-active-queue .schedule-card {
+    grid-column: 1 / 2;
+    grid-row: 1;
+  }
+
+  #patientFlow.has-active-queue .dept-status-card {
+    grid-column: 2 / 3;
+    grid-row: 1;
+  }
+
+  #patientFlow.has-active-queue .schedule-placeholder,
+  #patientFlow.has-active-queue .schedule-list {
+    max-height: min(44vh, 460px);
+  }
+}
+
+@media (max-width: 820px) {
+  #patientFlow.has-active-queue .schedule-card {
+    order: 1;
+  }
+
+  #patientFlow.has-active-queue .dept-status-card {
+    order: 2;
+  }
+
+  footer {
+    padding-block: 0.75rem;
+  }
+
+  footer .fallback-contact {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  footer .fallback-contact-pill {
+    flex: 1 1 150px;
+    max-width: 100%;
+  }
+}
+
+.patient-subdepartment-field {
+  min-width: 0;
+}
+
+.patient-subdepartment-list {
+  display: grid;
+  gap: 0.55rem;
+  min-height: 42px;
+  padding: 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+}
+
+.patient-subdepartment-option {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.patient-subdepartment-option input {
+  flex: 0 0 auto;
+}
+
+.patient-subdepartment-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

@@ -385,6 +385,17 @@
               </div>
 
               <div class="form-group">
+                <label for="subdepartment-room">Room Number</label>
+                <input
+                  type="text"
+                  id="subdepartment-room"
+                  placeholder="Example: 204"
+                  maxlength="30"
+                  required
+                />
+              </div>
+
+              <div class="form-group">
                 <label for="subdepartment-department">Department</label>
                 <select id="subdepartment-department" required>
                   <option value="">Select department</option>
@@ -419,6 +430,7 @@
                 <thead>
                   <tr>
                     <th>Subdepartment</th>
+                    <th>Room</th>
                     <th>Department</th>
                     <th>Status</th>
                     <th>Current Queue</th>
@@ -427,7 +439,7 @@
                 </thead>
                 <tbody id="settings-subdepartments-tbody">
                   <tr>
-                    <td colspan="5" style="padding: 16px; color: var(--text3);">
+                    <td colspan="6" style="padding: 16px; color: var(--text3);">
                       No subdepartments loaded.
                     </td>
                   </tr>
@@ -539,11 +551,8 @@
 	            <label for="dept-status-select">Department Status</label>
 	            <select id="dept-status-select">
 	              <option value="open">Open</option>
-	              <option value="pause">Paused</option>
 	              <option value="closed">Closed</option>
 	            </select>
-	            <input type="text" id="dept-pause-message" placeholder="Pause message">
-	            <input type="datetime-local" id="dept-paused-until">
 	            <button class="act-btn" onclick="saveDepartmentStatus()">Save Status</button>
 	          </div>
 	          <a class="act-btn" id="open-display-link" href="/display" target="_blank">Open Display</a>
@@ -705,8 +714,7 @@
                 <th>Queue #</th>
                 <th>Patient Name</th>
                 <th>Status</th>
-                <th>Counter</th>
-                <th>AI Wait</th>
+                <th>Wait</th>
                 <th>Actions</th>
                 </tr>
             </thead>
@@ -792,14 +800,6 @@
                 <option value="low">Low</option>
                 <option value="medium" selected>Medium</option>
                 <option value="high">High</option>
-            </select>
-            </div>
-            <div class="form-group">
-            <label>Counter</label>
-            <select id="f-counter">
-                <option>Counter 1 — Dr. Santos</option>
-                <option>Counter 2 — Dr. Ramos</option>
-                <option>Counter 3 — Dr. Torres</option>
             </select>
             </div>
         </div>
