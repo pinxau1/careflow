@@ -101,6 +101,7 @@ if (isDashboard) {
       name: d.name,
       code: d.code,
       queueStatus: d.queue_status || 'open',
+      imageUrl: d.image_url || '',
       type: inferDeptType(d.name),
       queue: Number(d.queue_count || 0),
       color: deptColors[i % deptColors.length],
@@ -218,23 +219,31 @@ if (isDashboard) {
       return;
     }
 
-    grid.innerHTML = filtered.map(d => `
-    <div class="dept-card" onclick="openDept('${d.id}','${d.name.replace(/'/g, "\\'")}')">
-      <div class="dept-img" style="background:${d.color}">
-        <div class="dept-img-bg placeholder-text">${d.name}</div>
-        
+    grid.innerHTML = filtered.map(d => {
+      const imageUrl = safeDepartmentImageUrl(d.imageUrl);
+      const imageClass = imageUrl ? 'dept-img has-photo' : 'dept-img';
+      const imageStyle = imageUrl
+        ? `background-image:url('${escapeHtml(imageUrl)}')`
+        : `background:${escapeHtml(d.color)}`;
+      const typeClass = d.type === 'laboratory' ? 'lab' : d.type === 'support' ? 'support' : '';
+
+      return `
+    <div class="dept-card" onclick="openDept('${escapeHtml(d.id)}')">
+      <div class="${imageClass}" style="${imageStyle}">
+        <div class="dept-img-bg placeholder-text">${escapeHtml(d.name)}</div>
       </div>
       <div class="dept-info">
-        <div class="dept-name">${d.name}</div>
+        <div class="dept-name">${escapeHtml(d.name)}</div>
         <div class="dept-meta">
-          <span class="dept-type ${d.type === 'laboratory' ? 'lab' : d.type === 'support' ? 'support' : ''}">
-            ${d.type.replace('-', ' ')}
+          <span class="dept-type ${typeClass}">
+            ${escapeHtml(d.type.replace('-', ' '))}
           </span>
-          <span class="dept-queue">Queue: <span>${d.queue}</span></span>
+          <span class="dept-queue">Queue: <span>${escapeHtml(d.queue)}</span></span>
         </div>
       </div>
     </div>
-  `).join('');
+  `;
+    }).join('');
   }
 
   async function refreshDepartmentOverview() {
@@ -370,6 +379,16 @@ if (isDashboard) {
       '"': '&quot;',
       "'": '&#39;'
     })[ch]);
+  }
+
+  function safeDepartmentImageUrl(value) {
+    const imageUrl = String(value || '').trim();
+    if (!imageUrl) return '';
+    if (/["'()\\<>\n\r]/.test(imageUrl)) return '';
+    if (/^https?:\/\/\S+$/i.test(imageUrl) || /^\/[^\s]*$/.test(imageUrl)) {
+      return imageUrl;
+    }
+    return '';
   }
 
   function renderNowServingCard() {
@@ -860,9 +879,171 @@ if (isDashboard) {
     await loadDepartmentsForCounterForm();
     await loadDepartmentsForSubdepartmentForm();
     await loadDepartmentsForScheduleForm();
+    await loadDepartmentsSettings();
     await loadCountersSettings();
     await loadSubdepartmentsSettings();
     await loadScheduleSettings();
+  }
+
+  async function refreshDepartmentSettingsDependencies() {
+    await fetchBootstrapData();
+    renderDepts();
+    renderCounters();
+    await loadDepartmentsForCounterForm();
+    await loadDepartmentsForSubdepartmentForm();
+    await loadDepartmentsForScheduleForm();
+    await loadDepartmentsForStaffForm();
+    await loadCountersSettings();
+    await loadSubdepartmentsSettings();
+    await loadScheduleSettings();
+  }
+
+  async function loadDepartmentsSettings() {
+    const tbody = document.getElementById('settings-departments-tbody');
+    if (!tbody) return;
+
+    await fetchBootstrapData();
+    renderDepts();
+
+    if (!departments.length) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="padding: 16px; color: var(--text3);">
+            No departments configured yet.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = departments.map(dept => `
+      <tr>
+        <td>
+          <input
+            type="text"
+            value="${escapeHtml(dept.name || '')}"
+            id="department-name-${escapeHtml(dept.id)}"
+          />
+        </td>
+
+        <td>
+          <input
+            type="text"
+            value="${escapeHtml(dept.code || '')}"
+            id="department-code-${escapeHtml(dept.id)}"
+            maxlength="12"
+          />
+        </td>
+
+        <td>
+          <select id="department-status-${escapeHtml(dept.id)}">
+            <option value="open" ${dept.queueStatus === 'open' ? 'selected' : ''}>Open</option>
+            <option value="closed" ${dept.queueStatus === 'closed' ? 'selected' : ''}>Closed</option>
+          </select>
+        </td>
+
+        <td>
+          <input
+            type="text"
+            inputmode="url"
+            value="${escapeHtml(dept.imageUrl || '')}"
+            id="department-image-${escapeHtml(dept.id)}"
+            placeholder="https://example.com/photo.jpg"
+          />
+        </td>
+
+        <td>
+          <div class="action-btns">
+            <button class="act-btn" onclick="saveDepartmentDetails('${escapeHtml(dept.id)}')">
+              Save
+            </button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function attachDepartmentForm() {
+    const form = document.getElementById('department-form');
+    if (!form || form.dataset.bound === '1') return;
+    form.dataset.bound = '1';
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+
+      const name = document.getElementById('department-name').value.trim();
+      const code = document.getElementById('department-code').value.trim();
+      const queueStatus = document.getElementById('department-status').value;
+      const imageUrl = document.getElementById('department-image-url').value.trim();
+
+      if (!name || !code) {
+        showToast('Please enter a department name and code');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/admin/departments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            code,
+            queue_status: queueStatus,
+            image_url: imageUrl
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to create department');
+        }
+
+        form.reset();
+        await refreshDepartmentSettingsDependencies();
+        await loadDepartmentsSettings();
+        showToast('Department created');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
+    });
+  }
+
+  async function saveDepartmentDetails(departmentId) {
+    const name = document.getElementById('department-name-' + departmentId).value.trim();
+    const code = document.getElementById('department-code-' + departmentId).value.trim();
+    const queueStatus = document.getElementById('department-status-' + departmentId).value;
+    const imageUrl = document.getElementById('department-image-' + departmentId).value.trim();
+
+    if (!name || !code) {
+      showToast('Department name and code cannot be empty');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/departments/' + encodeURIComponent(departmentId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          code,
+          queue_status: queueStatus,
+          image_url: imageUrl
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update department');
+      }
+
+      await refreshDepartmentSettingsDependencies();
+      await loadDepartmentsSettings();
+      showToast('Department updated');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
   }
 
   async function loadDepartmentsForCounterForm() {
@@ -903,8 +1084,8 @@ if (isDashboard) {
 
   function getDepartmentOptions(selectedDepartmentId) {
     return departments.map(dept => `
-    <option value="${dept.id}" ${Number(dept.id) === Number(selectedDepartmentId) ? 'selected' : ''}>
-      ${dept.name}
+    <option value="${escapeHtml(dept.id)}" ${Number(dept.id) === Number(selectedDepartmentId) ? 'selected' : ''}>
+      ${escapeHtml(dept.name)}
     </option>
   `).join('');
   }
@@ -1351,6 +1532,8 @@ if (isDashboard) {
 
   window.saveCounter = saveCounter;
   window.deleteCounter = deleteCounter;
+  window.saveDepartmentDetails = saveDepartmentDetails;
+  window.loadDepartmentsSettings = loadDepartmentsSettings;
   window.loadCountersSettings = loadCountersSettings;
 
   async function loadSubdepartmentsSettings() {
@@ -1545,10 +1728,11 @@ if (isDashboard) {
 
     const dept = departments.find(d => String(d.id) === String(id));
     queueOpen = !dept || dept.queueStatus === 'open';
+    const departmentName = name || (dept ? dept.name : 'Department');
     selectedCounterId = null;
     syncSelectedCounter();
 
-    document.getElementById('active-dept-name').textContent = name;
+    document.getElementById('active-dept-name').textContent = departmentName;
 
     showPage('queue');
 
@@ -2294,6 +2478,7 @@ if (isDashboard) {
       applyRoleUI();
       loadDepartmentsForStaffForm();
       attachStaffForm();
+      attachDepartmentForm();
       attachCounterForm();
       attachSubdepartmentForm();
       attachScheduleForm();

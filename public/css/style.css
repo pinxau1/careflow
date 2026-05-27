@@ -2472,6 +2472,8 @@ select:focus {
   align-items: flex-end;
   justify-content: flex-start;
   padding: 18px;
+  background-position: center;
+  background-size: cover;
 }
 
 .dept-img::after {
@@ -2481,6 +2483,12 @@ select:focus {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.58), transparent 48%),
     linear-gradient(0deg, rgba(17, 35, 27, 0.08), transparent);
+}
+
+.dept-img.has-photo::after {
+  background:
+    linear-gradient(180deg, rgba(17, 35, 27, 0.08), rgba(17, 35, 27, 0.62)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12), transparent 46%);
 }
 
 .dept-img-bg.placeholder-text {
@@ -2494,6 +2502,11 @@ select:focus {
   font-weight: 800;
   line-height: 1.05;
   text-align: left;
+}
+
+.dept-img.has-photo .dept-img-bg.placeholder-text {
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
 }
 
 .dept-info {
@@ -5106,6 +5119,94 @@ body:not(.display-body) #page-settings .settings-panel:nth-of-type(3) .settings-
   body:not(.display-body) #page-settings .settings-panel:nth-of-type(3),
   body:not(.display-body) #page-settings .settings-panel:nth-of-type(4),
   body:not(.display-body) #page-settings .settings-panel:nth-of-type(5),
+  body:not(.display-body) #page-settings .schedule-settings-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+/* Settings now has three create/table pairs: departments, counters, subdepartments. */
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(1) {
+  grid-column: 1 / span 3;
+  grid-row: 1;
+}
+
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(2) {
+  grid-column: 4 / -1;
+  grid-row: 1;
+}
+
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(3) {
+  grid-column: 1 / span 3;
+  grid-row: 2;
+}
+
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(4) {
+  grid-column: 4 / -1;
+  grid-row: 2;
+}
+
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(5) {
+  grid-column: 1 / span 3;
+  grid-row: 3;
+}
+
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(6) {
+  grid-column: 4 / -1;
+  grid-row: 3;
+}
+
+body:not(.display-body) #page-settings .schedule-settings-panel,
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(7) {
+  grid-column: 1 / -1;
+  grid-row: 4;
+}
+
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(2),
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(4),
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(6) {
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(2) .settings-table-wrap,
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(4) .settings-table-wrap,
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(6) .settings-table-wrap {
+  flex: 1 1 auto;
+  max-height: none;
+  width: 100%;
+}
+
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(1) .settings-form,
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(3) .settings-form,
+body:not(.display-body) #page-settings .settings-panel:nth-of-type(5) .settings-form {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 1320px) {
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(1),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(3),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(5) {
+    grid-column: 1 / span 4;
+  }
+
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(2),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(4),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(6) {
+    grid-column: 5 / -1;
+  }
+}
+
+@media (max-width: 1040px) {
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(1),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(2),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(3),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(4),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(5),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(6),
+  body:not(.display-body) #page-settings .settings-panel:nth-of-type(7),
   body:not(.display-body) #page-settings .schedule-settings-panel {
     grid-column: 1;
     grid-row: auto;

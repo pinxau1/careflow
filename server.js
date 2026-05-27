@@ -571,6 +571,55 @@ let queueTransferSchemaReady = false;
 let authSchemaReady = false;
 let subdepartmentSchemaReady = false;
 let preferredDoctorSchemaReady = false;
+let departmentSchemaReady = false;
+
+function normalizeDepartmentImageUrl(value) {
+  const imageUrl = String(value || '').trim();
+  if (!imageUrl) return null;
+
+  if (imageUrl.length > 1000) {
+    return null;
+  }
+
+  if (/["'()\\<>\n\r]/.test(imageUrl)) {
+    return null;
+  }
+
+  if (/^https?:\/\/\S+$/i.test(imageUrl) || /^\/[^\s]*$/.test(imageUrl)) {
+    return imageUrl;
+  }
+
+  return null;
+}
+
+async function ensureDepartmentSchema() {
+  if (departmentSchemaReady) return;
+
+  let conn;
+
+  try {
+    conn = await pool.getConnection();
+
+    const [imageColumn] = await conn.execute(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'departments'
+         AND column_name = 'image_url'
+       LIMIT 1`
+    );
+
+    if (!imageColumn) {
+      await conn.execute('ALTER TABLE departments ADD COLUMN image_url VARCHAR(1000) NULL AFTER queue_status');
+    }
+
+    departmentSchemaReady = true;
+  } catch (err) {
+    console.error('Department schema setup failed:', err.message);
+  } finally {
+    if (conn) conn.release();
+  }
+}
 
 async function ensureAuthSchema() {
   if (authSchemaReady) return;
@@ -1969,6 +2018,7 @@ ensureAuthSchema();
 ensureDemographicSchema();
 ensurePreferredDoctorSchema();
 ensureSubdepartmentSchema();
+ensureDepartmentSchema();
 
 const AI_HISTORY_ALLOWED_STATUSES = ['waiting', 'serving', 'done', 'cancelled', 'no_show', 'void'];
 const AI_HISTORY_DEFAULT_STATUSES = ['done', 'cancelled', 'no_show', 'void'];
@@ -2911,6 +2961,7 @@ app.get('/api/departments/status', reqLogin, async (req, res) => {
   let conn;
 
   try {
+    await ensureDepartmentSchema();
     conn = await pool.getConnection();
 
     const rows = await conn.execute(
@@ -2919,10 +2970,11 @@ app.get('/api/departments/status', reqLogin, async (req, res) => {
 	          d.name,
 	          d.code,
 	          d.queue_status,
+	          d.image_url,
 	          COUNT(CASE WHEN q.status IN ('waiting', 'serving') THEN 1 END) AS active_count
 	       FROM departments d
 	       LEFT JOIN queues q ON q.department_id = d.department_id
-	       GROUP BY d.department_id, d.name, d.code, d.queue_status
+	       GROUP BY d.department_id, d.name, d.code, d.queue_status, d.image_url
 	       ORDER BY d.name ASC`
     );
 
@@ -2954,6 +3006,152 @@ app.get('/api/departments/status', reqLogin, async (req, res) => {
     return res.json({
       success: true,
       departments
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.post('/api/admin/departments', reqLogin, reqAdmin, async (req, res) => {
+  const name = String(req.body.name || '').trim();
+  const code = String(req.body.code || '').trim().toUpperCase();
+  const status = String(req.body.queue_status || req.body.status || 'open').trim().toLowerCase();
+  const imageUrl = normalizeDepartmentImageUrl(req.body.image_url || req.body.imageUrl);
+
+  if (!name || !code) {
+    return res.status(400).json({ error: 'Department name and code are required' });
+  }
+
+  if (!['open', 'closed'].includes(status)) {
+    return res.status(400).json({ error: 'Department status must be open or closed' });
+  }
+
+  if ((req.body.image_url || req.body.imageUrl) && !imageUrl) {
+    return res.status(400).json({ error: 'Photo URL must be a valid http(s) URL or app path' });
+  }
+
+  let conn;
+
+  try {
+    await ensureDepartmentSchema();
+    conn = await pool.getConnection();
+
+    const [existing] = await conn.execute(
+      `SELECT department_id
+       FROM departments
+       WHERE LOWER(name) = LOWER(?)
+          OR UPPER(code) = UPPER(?)
+       LIMIT 1`,
+      [name, code]
+    );
+
+    if (existing) {
+      return res.status(409).json({ error: 'Department name or code is already in use' });
+    }
+
+    const result = await conn.execute(
+      `INSERT INTO departments (name, code, queue_status, image_url)
+       VALUES (?, ?, ?, ?)`,
+      [name, code, status, imageUrl]
+    );
+
+    return res.json({
+      success: true,
+      department_id: Number(result.insertId),
+      department: {
+        department_id: Number(result.insertId),
+        name,
+        code,
+        queue_status: status,
+        image_url: imageUrl
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.patch('/api/admin/departments/:department_id', reqLogin, reqAdmin, async (req, res) => {
+  const departmentId = Number(req.params.department_id);
+  const name = String(req.body.name || '').trim();
+  const code = String(req.body.code || '').trim().toUpperCase();
+  const status = String(req.body.queue_status || req.body.status || 'open').trim().toLowerCase();
+  const rawImageUrl = req.body.image_url || req.body.imageUrl || '';
+  const imageUrl = normalizeDepartmentImageUrl(rawImageUrl);
+
+  if (!departmentId) {
+    return res.status(400).json({ error: 'Valid department is required' });
+  }
+
+  if (!name || !code) {
+    return res.status(400).json({ error: 'Department name and code are required' });
+  }
+
+  if (!['open', 'closed'].includes(status)) {
+    return res.status(400).json({ error: 'Department status must be open or closed' });
+  }
+
+  if (rawImageUrl && !imageUrl) {
+    return res.status(400).json({ error: 'Photo URL must be a valid http(s) URL or app path' });
+  }
+
+  let conn;
+
+  try {
+    await ensureDepartmentSchema();
+    conn = await pool.getConnection();
+
+    const [department] = await conn.execute(
+      `SELECT department_id
+       FROM departments
+       WHERE department_id = ?
+       LIMIT 1`,
+      [departmentId]
+    );
+
+    if (!department) {
+      return res.status(404).json({ error: 'Department not found' });
+    }
+
+    const [existing] = await conn.execute(
+      `SELECT department_id
+       FROM departments
+       WHERE department_id <> ?
+         AND (LOWER(name) = LOWER(?)
+          OR UPPER(code) = UPPER(?))
+       LIMIT 1`,
+      [departmentId, name, code]
+    );
+
+    if (existing) {
+      return res.status(409).json({ error: 'Department name or code is already in use' });
+    }
+
+    await conn.execute(
+      `UPDATE departments
+       SET name = ?,
+           code = ?,
+           queue_status = ?,
+           image_url = ?
+       WHERE department_id = ?`,
+      [name, code, status, imageUrl, departmentId]
+    );
+
+    return res.json({
+      success: true,
+      department: {
+        department_id: departmentId,
+        name,
+        code,
+        queue_status: status,
+        image_url: imageUrl
+      }
     });
   } catch (err) {
     console.error(err);
@@ -4083,6 +4281,7 @@ app.get('/api/admin/dashboard/bootstrap', reqLogin, reqStaffOrAdmin, async (req,
   let conn;
 
   try {
+    await ensureDepartmentSchema();
     conn = await pool.getConnection();
 
     const isStaff = req.session.role === 'staff';
@@ -4095,7 +4294,7 @@ app.get('/api/admin/dashboard/bootstrap', reqLogin, reqStaffOrAdmin, async (req,
     }
 
     const departments = await conn.execute(
-      `SELECT d.department_id, d.name, d.code, d.queue_status,
+      `SELECT d.department_id, d.name, d.code, d.queue_status, d.image_url,
               CASE
                 WHEN EXISTS (
                   SELECT 1

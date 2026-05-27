@@ -305,6 +305,85 @@
 
         <div class="settings-layout">
           <section class="settings-panel">
+            <div class="settings-panel-title">Create Department</div>
+
+            <form id="department-form" class="settings-form">
+              <div class="form-group">
+                <label for="department-name">Department Name</label>
+                <input
+                  type="text"
+                  id="department-name"
+                  placeholder="Example: Laboratory"
+                  required
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="department-code">Department Code</label>
+                <input
+                  type="text"
+                  id="department-code"
+                  placeholder="Example: LB"
+                  maxlength="12"
+                  required
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="department-status">Initial Status</label>
+                <select id="department-status">
+                  <option value="open">Open</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="department-image-url">Photo URL</label>
+                <input
+                  type="text"
+                  inputmode="url"
+                  id="department-image-url"
+                  placeholder="https://example.com/department.jpg"
+                />
+              </div>
+
+              <button type="submit" class="btn-submit">Create Department</button>
+            </form>
+          </section>
+
+          <section class="settings-panel">
+            <div class="settings-panel-header">
+              <div>
+                <div class="settings-panel-title">Departments</div>
+                <div class="settings-panel-sub">Edit department names, codes, status, and demo photos</div>
+              </div>
+
+              <button class="btn-light" onclick="loadDepartmentsSettings()">Refresh</button>
+            </div>
+
+            <div class="settings-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Department</th>
+                    <th>Code</th>
+                    <th>Status</th>
+                    <th>Photo URL</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="settings-departments-tbody">
+                  <tr>
+                    <td colspan="5" style="padding: 16px; color: var(--text3);">
+                      No departments loaded.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="settings-panel">
             <div class="settings-panel-title">Create Counter</div>
 
             <form id="counter-form" class="settings-form">
