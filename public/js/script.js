@@ -180,6 +180,7 @@ if (isDashboard) {
       wait: q.status === 'serving' ? 'Serving now' : 'Waiting',
       queueType: q.category === 'priority' ? 'pwd' : 'regular',
       reason: q.visit_description || q.category || 'No visit description',
+      preferredDoctorName: q.preferred_doctor_name || '',
       aiSuggestedDepartment: q.ai_suggested_department || '',
       aiPriorityLevel: q.ai_priority_level || 'normal',
       calledAt: q.called_at
@@ -476,6 +477,9 @@ if (isDashboard) {
         <td class="queue-line-patient" data-label="Patient">
           <div class="queue-line-name">${p.name}</div>
           <div class="queue-line-detail">${escapeHtml(p.reason || getDemographicText(p))}</div>
+          ${p.preferredDoctorName ? `
+          <div class="queue-line-detail">Preferred doctor: ${escapeHtml(p.preferredDoctorName)}</div>
+          ` : ''}
           ${p.aiSuggestedDepartment || (p.aiPriorityLevel && p.aiPriorityLevel !== 'normal') ? `
           <div class="queue-line-detail">
             ${p.aiSuggestedDepartment ? `Suggested: ${escapeHtml(p.aiSuggestedDepartment)}` : ''}
@@ -3013,6 +3017,9 @@ if (patientEl) {
   let patientSubdepartments = [];
   let patientSubdepartmentsLoading = false;
   let patientSubdepartmentRequestId = 0;
+  let patientDoctors = [];
+  let patientDoctorsLoading = false;
+  let patientDoctorRequestId = 0;
   let lastRouteSignature = null;
   let routeInitialized = false;
 
@@ -3032,6 +3039,8 @@ if (patientEl) {
   const suggestionStatus = document.getElementById('suggestion-status');
   const patientSubdepartmentField = document.getElementById('patient-subdepartment-field');
   const patientSubdepartmentList = document.getElementById('patient-subdepartments');
+  const patientDoctorField = document.getElementById('patient-doctor-field');
+  const patientDoctorSelect = document.getElementById('inp-doctor');
   const queuePositionSummary = document.getElementById('queue-position-summary');
   const queuePositionRank = document.getElementById('queue-position-rank');
   const queuePositionCopy = document.getElementById('queue-position-copy');
@@ -3152,6 +3161,14 @@ if (patientEl) {
       const selected = data.ai.suggested_department
         ? applySuggestedDepartment(data.ai.suggested_department)
         : false;
+      if (selected) {
+        refreshPatientDoctors().catch(err => {
+          console.error(err);
+        });
+        refreshPatientSubdepartments().catch(err => {
+          console.error(err);
+        });
+      }
       const reviewText = data.ai.priority_level === 'urgent_review'
         ? 'Needs staff review'
         : data.ai.priority_level === 'priority'
@@ -3324,10 +3341,18 @@ if (patientEl) {
     }
     const aiNote = document.getElementById('now-ai-note');
     if (aiNote) {
+      const preferredDoctorText = route && route.preferred_doctor_name
+        ? `Preferred doctor: ${route.preferred_doctor_name}.`
+        : '';
       if (referralMessage) {
-        aiNote.textContent = referralMessage;
+        aiNote.textContent = [referralMessage, preferredDoctorText].filter(Boolean).join(' ');
       } else if (ai && ai.suggested_department) {
-        aiNote.textContent = `Suggested department: ${ai.suggested_department}. Note: Suggestion only. Clinic staff may change this.`;
+        aiNote.textContent = [
+          `Suggested department: ${ai.suggested_department}. Note: Suggestion only. Clinic staff may change this.`,
+          preferredDoctorText
+        ].filter(Boolean).join(' ');
+      } else if (preferredDoctorText) {
+        aiNote.textContent = preferredDoctorText;
       } else {
         aiNote.textContent = '';
       }
@@ -3422,7 +3447,8 @@ if (patientEl) {
           subdepartment_id: data.subdepartment_id || null,
           subdepartment_destination: data.subdepartment_destination || '',
           subdepartment_name: data.subdepartment_name || '',
-          subdepartment_room_number: data.subdepartment_room_number || ''
+          subdepartment_room_number: data.subdepartment_room_number || '',
+          preferred_doctor_name: data.preferred_doctor_name || ''
         }
       );
       renderPatientSchedules();
@@ -3483,6 +3509,89 @@ if (patientEl) {
     return Array.from(patientSubdepartmentList.querySelectorAll('input[type="checkbox"]:checked'))
       .map(input => Number(input.value))
       .filter(value => Number.isInteger(value) && value > 0);
+  }
+
+  function getSelectedPatientDoctorId() {
+    if (!patientDoctorSelect) return null;
+    const value = Number(patientDoctorSelect.value || 0);
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }
+
+  function renderPatientDoctors() {
+    if (!patientDoctorField || !patientDoctorSelect) return;
+
+    patientDoctorSelect.innerHTML = '';
+
+    const anyOption = document.createElement('option');
+    anyOption.value = '';
+    anyOption.textContent = patientDoctorsLoading ? 'Loading doctors...' : 'Any available doctor';
+    patientDoctorSelect.appendChild(anyOption);
+
+    if (patientDoctorsLoading) {
+      patientDoctorField.classList.remove('hidden');
+      patientDoctorSelect.disabled = true;
+      return;
+    }
+
+    if (!patientDoctors.length) {
+      patientDoctorField.classList.add('hidden');
+      patientDoctorSelect.disabled = true;
+      return;
+    }
+
+    patientDoctors.forEach(doctor => {
+      const option = document.createElement('option');
+      option.value = doctor.user_id;
+      option.textContent = doctor.full_name || doctor.username || 'Doctor';
+      patientDoctorSelect.appendChild(option);
+    });
+
+    patientDoctorSelect.disabled = false;
+    patientDoctorField.classList.remove('hidden');
+  }
+
+  async function refreshPatientDoctors() {
+    if (addQueueForm && addQueueForm.classList.contains('hidden')) {
+      patientDoctors = [];
+      patientDoctorsLoading = false;
+      renderPatientDoctors();
+      return;
+    }
+
+    const selectedDepartment = getSelectedPatientDepartment();
+    const requestId = ++patientDoctorRequestId;
+
+    patientDoctors = [];
+
+    if (!selectedDepartment || !selectedDepartment.department_id) {
+      renderPatientDoctors();
+      return;
+    }
+
+    patientDoctorsLoading = true;
+    renderPatientDoctors();
+
+    try {
+      const res = await fetch(`/api/departments/${encodeURIComponent(selectedDepartment.department_id)}/doctors`);
+      const data = await res.json();
+
+      if (requestId !== patientDoctorRequestId) return;
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || data.message || 'Failed to load doctors');
+      }
+
+      patientDoctors = data.doctors || [];
+    } catch (err) {
+      console.error(err);
+      patientDoctors = [];
+      showToast(err.message || 'Failed to load doctors');
+    } finally {
+      if (requestId === patientDoctorRequestId) {
+        patientDoctorsLoading = false;
+        renderPatientDoctors();
+      }
+    }
   }
 
   function renderPatientSubdepartments() {
@@ -3609,6 +3718,7 @@ if (patientEl) {
       const queueType = addQueueForm.queueType.value;
       const concern = addQueueForm.concern.value.trim();
       const subdepartmentIds = getSelectedPatientSubdepartmentIds();
+      const preferredDoctorUserId = getSelectedPatientDoctorId();
 
       if (!patientName || !age || !gender || !serviceType || !concern) {
         showToast('Please complete the form');
@@ -3625,6 +3735,18 @@ if (patientEl) {
 
       if (patientSubdepartmentsLoading) {
         showToast('Wait for services to finish loading');
+        isSubmittingQueue = false;
+
+        if (submitBtn) {
+          submitBtn.disabled = !isQueueOpen;
+          submitBtn.textContent = isQueueOpen ? 'Add' : 'Queue Closed';
+        }
+
+        return;
+      }
+
+      if (patientDoctorsLoading) {
+        showToast('Wait for doctors to finish loading');
         isSubmittingQueue = false;
 
         if (submitBtn) {
@@ -3664,6 +3786,7 @@ if (patientEl) {
             priority: queueType === 'pwd' ? 'high' : 'medium',
             concern,
             subdepartment_ids: subdepartmentIds,
+            preferred_doctor_user_id: preferredDoctorUserId,
             ai: aiPayload
           })
         });
@@ -3707,7 +3830,8 @@ if (patientEl) {
             subdepartment_id: data.subdepartment_id || null,
             subdepartment_destination: data.subdepartment_destination || '',
             subdepartment_name: data.subdepartment_name || '',
-            subdepartment_room_number: data.subdepartment_room_number || ''
+            subdepartment_room_number: data.subdepartment_room_number || '',
+            preferred_doctor_name: data.preferred_doctor_name || ''
           }
         );
         renderPatientSchedules();
@@ -3765,6 +3889,13 @@ if (patientEl) {
         name.className = 'queue-item-name';
         name.textContent = q.full_name;
         main.appendChild(name);
+      }
+
+      if (q.preferred_doctor_name) {
+        const doctor = document.createElement('div');
+        doctor.className = 'queue-item-name';
+        doctor.textContent = `Preferred doctor: ${q.preferred_doctor_name}`;
+        main.appendChild(doctor);
       }
 
       const status = document.createElement('span');
@@ -4032,11 +4163,18 @@ if (patientEl) {
       select.dataset.scheduleBound = '1';
       select.addEventListener('change', () => {
         renderPatientSchedules();
+        refreshPatientDoctors().catch(err => {
+          console.error(err);
+        });
         refreshPatientSubdepartments().catch(err => {
           console.error(err);
         });
       });
     }
+
+    refreshPatientDoctors().catch(err => {
+      console.error(err);
+    });
 
     refreshPatientSubdepartments().catch(err => {
       console.error(err);

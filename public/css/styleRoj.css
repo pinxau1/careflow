@@ -2741,6 +2741,10 @@ footer .fallback-contact-pill {
   min-width: 0;
 }
 
+.patient-doctor-field {
+  min-width: 0;
+}
+
 .patient-subdepartment-list {
   display: grid;
   gap: 0.55rem;

@@ -7,8 +7,14 @@ const announcerMuteBtn = document.getElementById('announcer-mute-btn');
 const announcerTestBtn = document.getElementById('announcer-test-btn');
 const announcerStatus = document.getElementById('announcer-status');
 const announcerWarning = document.getElementById('announcer-warning');
-const params = new URLSearchParams(window.location.search);
-let focusedDepartmentId = params.get('department_id');
+
+const REFRESH_MS = 10000;
+const PAGE_MS = 60000;
+const MIN_COLUMN_WIDTH = 238;
+const MAX_VISIBLE_COLUMNS = 7;
+
+let currentColumns = [];
+let currentPageIndex = 0;
 let currentServingQueue = null;
 let lastSpokenQueueCode = '';
 let lastSpokenAnnouncementKey = '';
@@ -48,16 +54,6 @@ function escAttr(value) {
     .replace(/'/g, '&#39;');
 }
 
-function formatTime(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
-
 function formatQueueCodeForSpeech(code) {
   const digitWords = {
     0: 'zero',
@@ -78,19 +74,6 @@ function formatQueueCodeForSpeech(code) {
     .split('')
     .map(char => digitWords[char] || char)
     .join(' ');
-}
-
-function getServiceLabel(queue, dept) {
-  return queue.service_label
-    || queue.destination_name
-    || queue.subdepartment_name
-    || queue.counter_name
-    || dept.name
-    || 'Service';
-}
-
-function getRoomLabel(queue) {
-  return queue.room_label || '';
 }
 
 function refreshVoices() {
@@ -148,7 +131,7 @@ function speakAnnouncement(queue) {
   if (!queue.announcement_event_id && queue.code === lastSpokenQueueCode) return;
   if (!announcerEnabled || announcerMuted) return;
 
-  const destination = queue.service_label || queue.destination_name || queue.counter_name || queue.department_name || 'the counter';
+  const destination = queue.subtitle || queue.column_title || queue.department_name || 'the counter';
   const spokenCode = formatQueueCodeForSpeech(queue.code);
   const message = `Ticket ${spokenCode}, please proceed to ${destination}.`;
 
@@ -157,34 +140,6 @@ function speakAnnouncement(queue) {
     lastSpokenAnnouncementKey = announcementKey;
     updateAnnouncerControls();
   }
-}
-
-function getLatestServingQueue(departments) {
-  const servingQueues = [];
-
-  departments.forEach(dept => {
-    (dept.serving || []).forEach(queue => {
-      servingQueues.push({
-        ...queue,
-        department_id: queue.department_id || dept.department_id,
-        department_name: queue.department_name || dept.name
-      });
-    });
-  });
-
-  if (!servingQueues.length) return null;
-
-  return servingQueues.sort((a, b) => {
-    const aEvent = Number(a.announcement_event_id || 0);
-    const bEvent = Number(b.announcement_event_id || 0);
-    if (aEvent !== bEvent) return bEvent - aEvent;
-
-    const aCalled = a.called_at ? new Date(a.called_at).getTime() : 0;
-    const bCalled = b.called_at ? new Date(b.called_at).getTime() : 0;
-    if (aCalled !== bCalled) return bCalled - aCalled;
-
-    return Number(b.queue_id || 0) - Number(a.queue_id || 0);
-  })[0];
 }
 
 function updateAnnouncerControls() {
@@ -244,14 +199,15 @@ function toggleMute() {
 function updateClock() {
   if (!clock) return;
 
-  clock.textContent = new Date().toLocaleTimeString([], {
+  const now = new Date();
+  clock.textContent = now.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit'
   });
 
   if (dateEl) {
-    dateEl.textContent = new Date().toLocaleDateString([], {
+    dateEl.textContent = now.toLocaleDateString([], {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -260,148 +216,159 @@ function updateClock() {
   }
 }
 
-function getDisplayStatus(queue) {
-  return queue.status === 'serving' ? 'serving' : 'waiting';
+function toTimestamp(value) {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
 }
 
-function getDisplayTimeLabel(queue, statusClass) {
-  const time = formatTime(queue.called_at);
-  if (!time) return '';
-  return (statusClass === 'serving' ? 'Called ' : 'Queued ') + time;
+function getVisibleColumnCount() {
+  const boardWidth = grid ? grid.clientWidth : window.innerWidth;
+  if (!boardWidth) return 5;
+  return Math.max(1, Math.min(MAX_VISIBLE_COLUMNS, Math.floor(boardWidth / MIN_COLUMN_WIDTH)));
 }
 
-function renderQueueRow(queue, dept) {
-  const serviceLabel = getServiceLabel(queue, dept);
-  const roomLabel = getRoomLabel(queue);
-  const statusClass = getDisplayStatus(queue);
-  const statusText = statusClass === 'serving' ? 'Serving' : 'Waiting';
-  const timeLabel = getDisplayTimeLabel(queue, statusClass);
+function getPageCount(columns = currentColumns) {
+  const visibleColumns = getVisibleColumnCount();
+  return Math.max(1, Math.ceil((columns || []).length / visibleColumns));
+}
+
+function getRecentMarker(columns) {
+  const queues = columns.flatMap(column => (column.serving || []).map(queue => ({
+    ...queue,
+    column_id: column.column_id,
+    column_title: column.title,
+    subtitle: column.subtitle,
+    department_name: column.department_name
+  })));
+
+  if (!queues.length) return { queue: null, eventId: 0, calledAt: 0 };
+
+  const eventId = queues.reduce((max, queue) => Math.max(max, Number(queue.announcement_event_id || 0)), 0);
+  const calledAt = queues.reduce((max, queue) => Math.max(max, toTimestamp(queue.called_at)), 0);
+  const queue = [...queues].sort((a, b) => {
+    const eventDiff = Number(b.announcement_event_id || 0) - Number(a.announcement_event_id || 0);
+    if (eventDiff) return eventDiff;
+    const calledDiff = toTimestamp(b.called_at) - toTimestamp(a.called_at);
+    if (calledDiff) return calledDiff;
+    return Number(b.queue_id || 0) - Number(a.queue_id || 0);
+  })[0] || null;
+
+  return { queue, eventId, calledAt };
+}
+
+function isRecentQueue(queue, marker) {
+  if (!queue || !marker) return false;
+  const eventId = Number(queue.announcement_event_id || 0);
+  if (marker.eventId && eventId === marker.eventId) return true;
+  return Boolean(marker.calledAt && toTimestamp(queue.called_at) === marker.calledAt);
+}
+
+function getQueueBadge(queue) {
+  if (queue.is_emergency) return 'Emergency';
+  if (queue.is_priority) return 'Priority';
+  return queue.status === 'serving' ? 'Serving' : 'Waiting';
+}
+
+function renderQueueCode(queue, marker, className = '') {
+  const classes = ['display-tv-code', className];
+  if (isRecentQueue(queue, marker)) classes.push('recent-call');
+
   return `
-    <div class="display-queue-row ${statusClass}" aria-label="${escHtml(queue.code)} ${statusText}">
-      <div class="display-queue-code">${escHtml(queue.code)}</div>
-      <div class="display-queue-meta">
-        <div class="display-queue-service">${escHtml(serviceLabel)}</div>
-        <div class="display-queue-room">${escHtml(roomLabel || dept.name || '')}</div>
-        ${timeLabel ? `<div class="display-queue-time">${escHtml(timeLabel)}</div>` : ''}
-      </div>
-      <div class="display-queue-status">${escHtml(statusText)}</div>
+    <div class="${classes.filter(Boolean).join(' ')}">
+      ${escHtml(queue.code)}
     </div>
   `;
 }
 
-function renderSubqueueColumn(group, dept) {
-  const serviceLabel = group.label || dept.name;
-  const roomLabel = group.room_label || '';
-  const rows = [
-    ...(group.serving || []),
-    ...(group.waiting || [])
-  ];
+function renderWaitingList(column, marker) {
+  const waiting = column.waiting || [];
+  if (!waiting.length) {
+    return `<div class="display-tv-empty">---</div>`;
+  }
 
-  return `
-    <section class="display-service-group">
-      <div class="display-service-head">
-        <div>
-          <div class="display-service-label">${escHtml(serviceLabel)}</div>
-          <div class="display-service-room">${escHtml(roomLabel || dept.name)}</div>
-        </div>
-        <div class="display-service-count">${rows.length}</div>
+  return waiting.slice(0, 8).map(queue => {
+    const badge = getQueueBadge(queue);
+    const showBadge = badge !== 'Waiting';
+    return `
+      <div class="display-tv-waiting-row ${showBadge ? 'has-badge' : 'no-badge'}">
+        ${renderQueueCode(queue, marker)}
+        ${showBadge ? `<span class="display-tv-badge ${escAttr(badge.toLowerCase())}">${escHtml(badge)}</span>` : ''}
       </div>
-      <div class="display-service-list">
-        ${rows.length
-          ? rows.map(queue => renderQueueRow(queue, dept)).join('')
-          : `<div class="display-next-empty">No tickets</div>`
-        }
-      </div>
-    </section>
-  `;
+    `;
+  }).join('');
 }
 
-function renderDepartment(dept, focused = false) {
-  const groups = (dept.groups || []).length
-    ? dept.groups
-    : [{
-        label: dept.name,
-        room_label: '',
-        serving: dept.serving || [],
-        waiting: dept.up_next || []
-      }];
-  const servingCount = groups.reduce((total, group) => total + (group.serving || []).length, 0);
-  const waitingCount = groups.reduce((total, group) => total + (group.waiting || []).length, 0);
+function renderServingList(column, marker) {
+  const serving = column.serving || [];
+  if (!serving.length) {
+    return `<div class="display-tv-empty large">---</div>`;
+  }
+
+  return serving.map(queue => renderQueueCode(queue, marker, 'serving')).join('');
+}
+
+function renderColumn(column, marker, pageLabel) {
+  const status = String(column.status || 'open').toLowerCase();
+  const statusLabel = status === 'pause' ? 'Paused' : status.charAt(0).toUpperCase() + status.slice(1);
 
   return `
-    <article
-      class="display-card display-department-card ${focused ? 'is-focused' : ''}"
-      data-department-id="${escAttr(dept.department_id)}"
-      role="button"
-      tabindex="0"
-      aria-label="${focused ? 'Show all queues' : 'Focus ' + escAttr(dept.name)}"
-    >
-      <div class="display-card-head">
+    <article class="display-tv-column ${escAttr(status)}">
+      <header class="display-tv-column-head">
         <div>
-          <div class="display-department">${escHtml(dept.name)}</div>
-          <div class="display-department-meta">
-            ${servingCount} serving / ${waitingCount} waiting
-          </div>
+          <div class="display-tv-title">${escHtml(column.title || 'Queue')}</div>
+          ${column.subtitle ? `<div class="display-tv-subtitle">${escHtml(column.subtitle)}</div>` : ''}
         </div>
-        <div class="display-status ${escHtml(dept.queue_status)}">${escHtml(dept.queue_status)}</div>
-      </div>
-      <div class="display-card-body">
-        <div class="display-service-grid">
-          ${groups.map(group => renderSubqueueColumn(group, dept)).join('')}
+        <div class="display-status ${escAttr(status)}">${escHtml(statusLabel)}</div>
+      </header>
+
+      <section class="display-tv-serving">
+        <div class="display-tv-section-label">Now Serving</div>
+        <div class="display-tv-serving-row">
+          ${renderServingList(column, marker)}
         </div>
-      </div>
+      </section>
+
+      <section class="display-tv-waiting">
+        <div class="display-tv-section-label">Waiting</div>
+        <div class="display-tv-waiting-list">
+          ${renderWaitingList(column, marker)}
+        </div>
+      </section>
+
+      <footer class="display-tv-footer">${escHtml(pageLabel)}</footer>
     </article>
   `;
 }
 
-function setFocusedDepartment(departmentId) {
-  focusedDepartmentId = departmentId ? String(departmentId) : null;
+function renderDisplay() {
+  if (!grid) return;
 
-  const nextUrl = new URL(window.location.href);
-  if (focusedDepartmentId) {
-    nextUrl.searchParams.set('department_id', focusedDepartmentId);
-  } else {
-    nextUrl.searchParams.delete('department_id');
+  const columns = currentColumns || [];
+  if (!columns.length) {
+    grid.innerHTML = `<div class="empty-state">No queues configured</div>`;
+    return;
   }
-  window.history.replaceState({}, '', nextUrl);
 
-  loadDisplay();
-}
+  const visibleColumns = getVisibleColumnCount();
+  const pageCount = getPageCount(columns);
+  currentPageIndex = Math.min(currentPageIndex, pageCount - 1);
 
-function renderDisplayControls(totalCount, visibleCount) {
-  if (!focusedDepartmentId || totalCount <= visibleCount) return '';
+  const start = currentPageIndex * visibleColumns;
+  const pageColumns = columns.slice(start, start + visibleColumns);
+  const marker = getRecentMarker(columns);
+  const pageLabel = `Page ${currentPageIndex + 1}/${pageCount}`;
 
-  return `
-    <div class="display-focus-bar">
-      <button type="button" class="display-show-all-btn" id="display-show-all-btn">
-        All queues
-      </button>
+  grid.style.setProperty('--visible-columns', String(Math.max(1, pageColumns.length)));
+  grid.innerHTML = `
+    <div class="display-tv-board">
+      ${pageColumns.map(column => renderColumn(column, marker, pageLabel)).join('')}
     </div>
   `;
 }
 
-function bindDisplayInteractions() {
-  const showAllBtn = document.getElementById('display-show-all-btn');
-  if (showAllBtn) {
-    showAllBtn.addEventListener('click', event => {
-      event.stopPropagation();
-      setFocusedDepartment(null);
-    });
-  }
-
-  grid.querySelectorAll('.display-department-card').forEach(card => {
-    const departmentId = card.dataset.departmentId;
-    const toggleFocus = () => {
-      setFocusedDepartment(String(departmentId) === String(focusedDepartmentId) ? null : departmentId);
-    };
-
-    card.addEventListener('click', toggleFocus);
-    card.addEventListener('keydown', event => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      toggleFocus();
-    });
-  });
+function getLatestServingQueue(columns) {
+  const marker = getRecentMarker(columns);
+  return marker.queue;
 }
 
 async function loadDisplay() {
@@ -413,32 +380,15 @@ async function loadDisplay() {
       throw new Error(data.error || 'Failed to load display');
     }
 
-    const departments = data.departments || [];
-    currentServingQueue = getLatestServingQueue(departments);
+    currentColumns = data.columns || [];
+    currentServingQueue = getLatestServingQueue(currentColumns);
 
-    const sortedDepartments = [...departments]
-      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    let renderedDepartments = focusedDepartmentId
-      ? sortedDepartments.filter(dept => String(dept.department_id) === String(focusedDepartmentId))
-      : sortedDepartments;
-
-    if (focusedDepartmentId && !renderedDepartments.length) {
-      focusedDepartmentId = null;
-      renderedDepartments = sortedDepartments;
-      const nextUrl = new URL(window.location.href);
-      nextUrl.searchParams.delete('department_id');
-      window.history.replaceState({}, '', nextUrl);
+    const pageCount = getPageCount(currentColumns);
+    if (currentPageIndex >= pageCount) {
+      currentPageIndex = 0;
     }
 
-    grid.innerHTML = sortedDepartments.length
-      ? `
-        ${renderDisplayControls(sortedDepartments.length, renderedDepartments.length)}
-        <div class="display-layout display-department-grid ${focusedDepartmentId ? 'is-focused' : ''}">
-          ${renderedDepartments.map(dept => renderDepartment(dept, Boolean(focusedDepartmentId))).join('')}
-        </div>
-      `
-      : `<div class="empty-state">No departments configured.</div>`;
-    bindDisplayInteractions();
+    renderDisplay();
 
     updated.textContent = 'Updated ' + new Date().toLocaleTimeString([], {
       hour: '2-digit',
@@ -452,6 +402,13 @@ async function loadDisplay() {
     grid.innerHTML = `<div class="empty-state">Unable to load display.</div>`;
     updated.textContent = 'Refresh failed';
   }
+}
+
+function advancePage() {
+  const pageCount = getPageCount(currentColumns);
+  if (pageCount <= 1) return;
+  currentPageIndex = (currentPageIndex + 1) % pageCount;
+  renderDisplay();
 }
 
 if (speechSupported) {
@@ -483,8 +440,11 @@ if (announcerTestBtn) {
   });
 }
 
+window.addEventListener('resize', renderDisplay);
+
 updateAnnouncerControls();
 updateClock();
 loadDisplay();
 setInterval(updateClock, 1000);
-setInterval(loadDisplay, 10000);
+setInterval(loadDisplay, REFRESH_MS);
+setInterval(advancePage, PAGE_MS);

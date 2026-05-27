@@ -321,7 +321,7 @@ function renderDepartments() {
     `)
     .join('');
 
-  select.innerHTML = options || '<option value="">No available departments</option>';
+  select.innerHTML = options || '<option value="">No laboratory services available</option>';
   const firstOpenOption = [...select.options].find(option => !option.disabled && option.value);
   if (firstOpenOption) select.value = firstOpenOption.value;
   refreshTargetSubdepartments().catch(err => toast(err.message));
@@ -419,6 +419,7 @@ function renderQueue(queues) {
         <div class="item-name">${escapeHtml(patientLabel(queue))}</div>
         <div class="item-meta">${escapeHtml([
           queue.category,
+          queue.preferred_doctor_name ? `Preferred doctor: ${queue.preferred_doctor_name}` : '',
           queue.subdepartment_name
             ? `${queue.subdepartment_name}${queue.subdepartment_room_number ? ' · Room ' + queue.subdepartment_room_number : ''}`
             : queue.counter_name
